@@ -28,7 +28,10 @@ function PreviewCanvas({
   viewportWidth,
 }: Pick<GmailPreviewProps, 'srcDoc' | 'viewportHeight' | 'viewportWidth'>) {
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [scale, setScale] = useState(1)
+  const [contentWidth, setContentWidth] = useState(() => viewportWidth)
+  const [contentHeight, setContentHeight] = useState(() => viewportHeight)
 
   useEffect(() => {
     const node = hostRef.current
@@ -45,30 +48,59 @@ function PreviewCanvas({
       }
 
       const availableWidth = Math.max(entry.contentRect.width - 24, 220)
-      setScale(Math.min(1, availableWidth / viewportWidth))
+      setScale(Math.min(1, availableWidth / Math.max(viewportWidth, contentWidth)))
     })
 
     observer.observe(node)
     return () => observer.disconnect()
-  }, [viewportWidth])
+  }, [contentWidth, viewportWidth])
+
+  const handleLoad = () => {
+    const frame = iframeRef.current
+    const doc = frame?.contentDocument
+
+    if (!doc) {
+      return
+    }
+
+    const html = doc.documentElement
+    const body = doc.body
+    const nextWidth = Math.max(
+      viewportWidth,
+      html?.scrollWidth ?? 0,
+      body?.scrollWidth ?? 0,
+      body?.getBoundingClientRect().width ?? 0,
+    )
+    const nextHeight = Math.max(
+      viewportHeight,
+      html?.scrollHeight ?? 0,
+      body?.scrollHeight ?? 0,
+      body?.getBoundingClientRect().height ?? 0,
+    )
+
+    setContentWidth(nextWidth)
+    setContentHeight(nextHeight)
+  }
 
   return (
     <div className="gmail-preview__message" ref={hostRef}>
       <div
         className="gmail-preview__canvas"
         style={{
-          height: viewportHeight * scale,
-          width: viewportWidth * scale,
+          height: contentHeight * scale,
+          width: contentWidth * scale,
         }}
       >
         <iframe
           className="gmail-preview__iframe"
+          onLoad={handleLoad}
+          ref={iframeRef}
           sandbox=""
           srcDoc={srcDoc}
           style={{
-            height: viewportHeight,
+            height: contentHeight,
             transform: `scale(${scale})`,
-            width: viewportWidth,
+            width: contentWidth,
           }}
           title="Gmail preview"
         />

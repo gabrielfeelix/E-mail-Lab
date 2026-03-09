@@ -144,7 +144,13 @@ export async function saveRemoteTemplate(template: TemplateRecord) {
     throw result.error
   }
 
-  return mapTemplateRow(result.data as TemplateRow)
+  const saved = mapTemplateRow(result.data as TemplateRow)
+
+  if (saved.markup !== payload.markup) {
+    throw new Error('O markup retornado pelo banco nao corresponde ao que foi salvo.')
+  }
+
+  return saved
 }
 
 export async function deleteRemoteTemplate(id: string) {

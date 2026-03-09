@@ -998,9 +998,16 @@ export function App() {
         templateName: draft.name,
       })
 
-      setDraft((current) => (current ? { ...current, markup } : current))
+      const nextDraft: TemplateRecord = {
+        ...draft,
+        markup,
+        updatedAt: new Date().toISOString(),
+      }
+
+      const saved = await persistTemplate(nextDraft)
+      setDraft(saved)
       setAiModalOpen(false)
-      setNotice('Markup gerado com Gemini. Revise antes de salvar.')
+      setNotice('Markup gerado com Gemini e salvo no Supabase.')
     } catch (error) {
       setAiError(error instanceof Error ? error.message : 'Nao foi possivel gerar o template com IA.')
     } finally {
