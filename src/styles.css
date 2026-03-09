@@ -462,11 +462,16 @@ button {
 
 .details-page {
   display: grid;
-  grid-template-columns: minmax(0, 860px);
+  grid-template-columns: minmax(0, 1080px);
+}
+
+.details-stack {
+  display: grid;
+  gap: 18px;
 }
 
 .details-page__panel {
-  padding: 30px;
+  padding: 24px;
 }
 
 .details-page__header,
@@ -479,12 +484,6 @@ button {
 
 .details-page__eyebrow {
   color: var(--primary-strong);
-}
-
-.details-fields {
-  display: grid;
-  gap: 18px;
-  margin-top: 28px;
 }
 
 .field {
@@ -517,26 +516,67 @@ button {
   box-shadow: 0 0 0 4px rgba(217, 30, 24, 0.1);
 }
 
-.details-page__meta {
+.details-panel {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 24px;
-}
-
-.details-page__meta div {
-  display: grid;
-  gap: 4px;
-  padding: 14px;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--surface-alt);
 }
 
-.details-page__meta span,
+.details-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.details-panel__header h3 {
+  margin: 0;
+  font-size: 1.28rem;
+}
+
+.details-list {
+  display: grid;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.details-list div {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.details-list div:last-child {
+  border-bottom: 0;
+}
+
+.details-list dt,
 .bottom-bar__status {
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.details-list dt,
+.details-list dd {
+  margin: 0;
+}
+
+.details-list dd {
+  color: var(--ink);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.details-list--compact div {
+  grid-template-columns: 220px minmax(0, 1fr);
 }
 
 .details-page__actions,
@@ -619,7 +659,7 @@ button {
 }
 
 .editor-column__surface {
-  display: grid;
+  display: block;
   min-height: 680px;
 }
 
@@ -651,8 +691,10 @@ button {
 }
 
 .editor-textarea {
+  display: block;
   width: 100%;
-  min-height: 100%;
+  min-height: 640px;
+  height: calc(100vh - 330px);
   padding: 14px 16px;
   border: 0;
   resize: vertical;
@@ -1064,6 +1106,12 @@ button {
   background: #eef2f7;
 }
 
+.modal-preview__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .modal-card__header,
 .modal-card__actions {
   display: flex;
@@ -1114,7 +1162,7 @@ button {
     display: none;
   }
 
-  .details-page__meta {
+  .details-list div {
     grid-template-columns: 1fr;
   }
 }

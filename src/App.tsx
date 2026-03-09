@@ -182,7 +182,7 @@ export function App() {
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [createForm, setCreateForm] = useState<TemplateFormState>(createBlankForm)
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile')
-  const [desktopPreviewOpen, setDesktopPreviewOpen] = useState(false)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [duplicateState, setDuplicateState] = useState<DuplicateState | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TemplateRecord | null>(null)
   const [copied, setCopied] = useState(false)
@@ -378,7 +378,7 @@ export function App() {
       setDraft(null)
       setActiveTemplateId(null)
       setPreviewDevice('mobile')
-      setDesktopPreviewOpen(false)
+      setPreviewModalOpen(false)
     })
   }
 
@@ -388,7 +388,7 @@ export function App() {
       setDraft(null)
       setActiveTemplateId(null)
       setPreviewDevice('mobile')
-      setDesktopPreviewOpen(false)
+      setPreviewModalOpen(false)
     })
   }
 
@@ -429,9 +429,9 @@ export function App() {
     startTransition(() => {
       setDraft({ ...template })
       setActiveTemplateId(template.id)
-      setView('preview')
+      setView('details')
       setPreviewDevice('mobile')
-      setDesktopPreviewOpen(false)
+      setPreviewModalOpen(true)
     })
   }
 
@@ -546,11 +546,10 @@ export function App() {
   const sentAtLabel = draft ? dateFormatter.format(new Date(draft.updatedAt)) : dateFormatter.format(new Date())
   const handlePreviewDeviceChange = (deviceId: PreviewDevice) => {
     if (deviceId === 'desktop') {
-      setDesktopPreviewOpen(true)
+      setPreviewModalOpen(true)
       return
     }
 
-    setDesktopPreviewOpen(false)
     setPreviewDevice(deviceId)
   }
 
@@ -730,154 +729,68 @@ export function App() {
 
           {view === 'details' && draft && (
             <section className="details-page">
-              <div className="details-page__panel">
-                <header className="details-page__header">
-                  <div>
-                    <span className="details-page__eyebrow">Template Details</span>
-                    <h2>Template Details</h2>
-                    <p>Defina as informacoes principais antes de entrar na edicao do template.</p>
-                  </div>
-                </header>
-
-                <div className="details-fields">
-                  <label className="field">
-                    <span>Template name *</span>
-                    <input
-                      onChange={(event) =>
-                        setDraft((current) =>
-                          current
-                            ? {
-                                ...current,
-                                name: event.target.value,
-                              }
-                            : current,
-                        )
-                      }
-                      value={draft.name}
-                    />
-                  </label>
-
-                  <label className="field">
-                    <span>Subject *</span>
-                    <input
-                      onChange={(event) =>
-                        setDraft((current) =>
-                          current
-                            ? {
-                                ...current,
-                                subject: event.target.value,
-                              }
-                            : current,
-                        )
-                      }
-                      value={draft.subject}
-                    />
-                  </label>
-
-                  <CategoryField
-                    categories={availableCategories}
-                    label="Category *"
-                    onChange={(value) =>
-                      setDraft((current) =>
-                        current
-                          ? {
-                              ...current,
-                              category: value,
-                            }
-                          : current,
-                      )
-                    }
-                    value={draft.category}
-                  />
-                </div>
-
-                <div className="details-page__meta">
-                  <div>
-                    <span>Empresa</span>
-                    <strong>{currentCompany.name}</strong>
-                  </div>
-                  <div>
-                    <span>Atualizado</span>
-                    <strong>{dateFormatter.format(new Date(draft.updatedAt))}</strong>
-                  </div>
-                  <div>
-                    <span>Formato</span>
-                    <strong>HTML</strong>
-                  </div>
-                </div>
-
-                <div className="details-page__actions">
-                  <button className="primary-button" onClick={handleContinueFromDetails} type="button">
-                    Continue
-                  </button>
-                  <button className="secondary-button" onClick={handleOpenList} type="button">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {view === 'preview' && draft && (
-            <section className="page">
-              <section className="preview-shell">
-                <header className="preview-shell__header">
-                  <div>
-                    <span className="details-page__eyebrow">Preview</span>
-                    <h2>{draft.name}</h2>
-                    <p>Leitura contextualizada antes de abrir o editor.</p>
-                  </div>
-
-                  <div className="preview-shell__actions">
-                    <div aria-label="Dispositivo" className="device-switch" role="tablist">
-                      {deviceEntries.map(([deviceId, device]) => {
-                        const Icon = device.icon
-                        return (
-                          <button
-                            aria-label={device.label}
-                            aria-selected={deviceId === 'desktop' ? desktopPreviewOpen : previewDevice === deviceId}
-                            className={
-                              (deviceId === 'desktop' ? desktopPreviewOpen : previewDevice === deviceId)
-                                ? 'is-active'
-                                : ''
-                            }
-                            key={deviceId}
-                            onClick={() => handlePreviewDeviceChange(deviceId)}
-                            role="tab"
-                            title={device.label}
-                            type="button"
-                          >
-                            <Icon size={16} />
-                          </button>
-                        )
-                      })}
+              <div className="details-stack">
+                <section className="details-page__panel">
+                  <header className="details-page__header">
+                    <div>
+                      <span className="details-page__eyebrow">Template</span>
+                      <h2>{draft.name}</h2>
+                      <p>Resumo geral do template antes de abrir a edicao.</p>
                     </div>
+                  </header>
+
+                  <div className="details-panel">
+                    <div className="details-panel__header">
+                      <h3>Detalhes</h3>
+                    </div>
+                    <dl className="details-list">
+                      <div>
+                        <dt>Nome</dt>
+                        <dd>{draft.name}</dd>
+                      </div>
+                      <div>
+                        <dt>Assunto</dt>
+                        <dd>{draft.subject}</dd>
+                      </div>
+                      <div>
+                        <dt>Categoria</dt>
+                        <dd>{draft.category}</dd>
+                      </div>
+                      <div>
+                        <dt>ID do template</dt>
+                        <dd>{draft.id}</dd>
+                      </div>
+                    </dl>
                   </div>
-                </header>
+                </section>
 
-                <div style={{ padding: '24px' }}>
-                  <GmailPreview
-                    mode={previewDevice}
-                    senderAddress={senderAddress}
-                    senderName={currentCompany.name}
-                    sentAtLabel={sentAtLabel}
-                    srcDoc={inlinedDocument}
-                    subject={draft.subject}
-                    viewportHeight={currentDevice.height}
-                    viewportWidth={currentDevice.width}
-                  />
-                </div>
+                <section className="details-page__panel">
+                  <div className="details-panel">
+                    <div className="details-panel__header">
+                      <h3>Design</h3>
+                      <div className="details-page__actions">
+                        <button className="secondary-button" onClick={() => handleOpenPreview(draft)} type="button">
+                          Preview
+                        </button>
+                        <button className="primary-button" onClick={handleContinueFromDetails} type="button">
+                          Editar
+                        </button>
+                      </div>
+                    </div>
 
-                <footer className="bottom-bar">
-                  <button className="secondary-button" onClick={handleOpenList} type="button">
-                    Cancel
-                  </button>
-                  <button className="primary-button" onClick={() => setView('editor')} type="button">
-                    <FilePenLine size={16} />
-                    Edit Template
-                  </button>
-                </footer>
-              </section>
+                    <dl className="details-list details-list--compact">
+                      <div>
+                        <dt>Tipo</dt>
+                        <dd>HTML</dd>
+                      </div>
+                      <div>
+                        <dt>Ultima atualizacao</dt>
+                        <dd>{dateFormatter.format(new Date(draft.updatedAt))}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                </section>
+              </div>
             </section>
           )}
 
@@ -891,7 +804,7 @@ export function App() {
                         Code Editor
                       </button>
                     </div>
-                    <p className="editor-column__intro">HTML completo a esquerda. Preview Gmail a direita.</p>
+                    <p className="editor-column__intro">Cole e edite o HTML do template.</p>
                   </div>
 
                   <div className="editor-column__surface">
@@ -934,12 +847,8 @@ export function App() {
                         return (
                           <button
                             aria-label={device.label}
-                            aria-selected={deviceId === 'desktop' ? desktopPreviewOpen : previewDevice === deviceId}
-                            className={
-                              (deviceId === 'desktop' ? desktopPreviewOpen : previewDevice === deviceId)
-                                ? 'is-active'
-                                : ''
-                            }
+                            aria-selected={previewDevice === deviceId}
+                            className={previewDevice === deviceId ? 'is-active' : ''}
                             key={deviceId}
                             onClick={() => handlePreviewDeviceChange(deviceId)}
                             role="tab"
@@ -1056,29 +965,50 @@ export function App() {
         </div>
       )}
 
-      {desktopPreviewOpen && draft && (
+      {previewModalOpen && draft && (
         <div className="modal-backdrop" role="presentation">
           <section aria-modal="true" className="modal-card modal-card--preview" role="dialog">
             <header className="modal-card__header">
               <div>
-                <h3>Preview Notebook</h3>
-                <p>Shell completa do Gmail para validar a leitura em tela ampla.</p>
+                <h3>Preview</h3>
+                <p>Visualizacao do template em contexto Gmail.</p>
               </div>
-              <button aria-label="Fechar" className="icon-button" onClick={() => setDesktopPreviewOpen(false)} type="button">
-                <X size={16} />
-              </button>
+              <div className="modal-preview__actions">
+                <div aria-label="Dispositivo" className="device-switch" role="tablist">
+                  {deviceEntries.map(([deviceId, device]) => {
+                    const Icon = device.icon
+                    return (
+                      <button
+                        aria-label={device.label}
+                        aria-selected={previewDevice === deviceId}
+                        className={previewDevice === deviceId ? 'is-active' : ''}
+                        key={deviceId}
+                        onClick={() => setPreviewDevice(deviceId)}
+                        role="tab"
+                        title={device.label}
+                        type="button"
+                      >
+                        <Icon size={16} />
+                      </button>
+                    )
+                  })}
+                </div>
+                <button aria-label="Fechar" className="icon-button" onClick={() => setPreviewModalOpen(false)} type="button">
+                  <X size={16} />
+                </button>
+              </div>
             </header>
 
             <div className="modal-card__preview">
               <GmailPreview
-                mode="desktop"
+                mode={previewDevice}
                 senderAddress={senderAddress}
                 senderName={currentCompany.name}
                 sentAtLabel={sentAtLabel}
                 srcDoc={inlinedDocument}
                 subject={draft.subject}
-                viewportHeight={devices.desktop.height}
-                viewportWidth={devices.desktop.width}
+                viewportHeight={currentDevice.height}
+                viewportWidth={currentDevice.width}
               />
             </div>
           </section>
