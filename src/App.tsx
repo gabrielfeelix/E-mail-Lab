@@ -1,6 +1,7 @@
-﻿import { useDeferredValue, useEffect, useMemo, useState, startTransition } from 'react'
+﻿import { useDeferredValue, useEffect, useMemo, useRef, useState, startTransition } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
+  Braces,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -31,6 +32,7 @@ import { CategoryField } from './components/CategoryField'
 import { ColorTokenField } from './components/ColorTokenField'
 import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
+import { templateVariableGroups } from './data/template-variables'
 import {
   getCurrentSession,
   loadCurrentMembershipCompanyIds,
@@ -62,7 +64,7 @@ import type { ProfileRecord } from './types/profile'
 import type { TemplateRecord } from './types/template'
 import type { TemplateVersionRecord } from './types/template-version'
 
-type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections' | 'brand' | 'access'
+type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections' | 'brand' | 'variables' | 'access'
 type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
 
 type DeviceConfig = {
@@ -308,6 +310,8 @@ export function App() {
   const [companyPickerOpen, setCompanyPickerOpen] = useState(false)
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile')
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [variableModalOpen, setVariableModalOpen] = useState(false)
+  const [variableSearch, setVariableSearch] = useState('')
   const [duplicateState, setDuplicateState] = useState<DuplicateState | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TemplateRecord | null>(null)
   const [sectionDeleteTarget, setSectionDeleteTarget] = useState<SectionRecord | null>(null)
@@ -339,6 +343,7 @@ export function App() {
   const [sendTestError, setSendTestError] = useState<string | null>(null)
   const [isSendingTest, setIsSendingTest] = useState(false)
   const [inlinedDocument, setInlinedDocument] = useState('')
+  const editorTextareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   const accessibleCompanies = useMemo(() => {
     if (profile?.isAdmin) {
@@ -456,6 +461,23 @@ export function App() {
     return [...new Set([...base, ...fromTemplates])].sort((left, right) => left.localeCompare(right))
   }, [categoryMap, companyId, companyTemplates, currentCompany.categories])
 
+  const filteredVariableGroups = useMemo(() => {
+    const query = variableSearch.trim().toLowerCase()
+
+    return templateVariableGroups
+      .map((group) => ({
+        ...group,
+        variables: group.variables.filter((variable) => {
+          if (!query) {
+            return true
+          }
+
+          return [group.label, variable.label, variable.token].join(' ').toLowerCase().includes(query)
+        }),
+      }))
+      .filter((group) => group.variables.length > 0)
+  }, [variableSearch])
+
   const deferredMarkup = useDeferredValue(draft?.markup ?? '')
   const markupStats = useMemo(() => describeMarkup(deferredMarkup), [deferredMarkup])
 
@@ -483,6 +505,10 @@ export function App() {
 
     if (view === 'brand') {
       return ['Identidade visual']
+    }
+
+    if (view === 'variables') {
+      return ['Variaveis']
     }
 
     if (view === 'access') {
@@ -847,6 +873,15 @@ export function App() {
     })
   }
 
+  const handleOpenVariables = () => {
+    startTransition(() => {
+      setView('variables')
+      setDraft(null)
+      setActiveTemplateId(null)
+      setPreviewModalOpen(false)
+    })
+  }
+
   const handleOpenAccess = () => {
     startTransition(() => {
       setView('access')
@@ -1187,6 +1222,11 @@ export function App() {
     setAiModalOpen(true)
   }
 
+  const handleOpenVariableModal = () => {
+    setVariableSearch('')
+    setVariableModalOpen(true)
+  }
+
   const handleGenerateWithAi = async () => {
     if (!draft) {
       return
@@ -1304,6 +1344,32 @@ export function App() {
     await navigator.clipboard.writeText(draft.markup)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1400)
+  }
+
+  const handleCopyVariable = async (token: string) => {
+    await navigator.clipboard.writeText(token)
+    setNotice('Variavel copiada.')
+  }
+
+  const handleInsertVariable = (token: string) => {
+    if (!draft) {
+      return
+    }
+
+    const textarea = editorTextareaRef.current
+    const selectionStart = textarea?.selectionStart ?? draft.markup.length
+    const selectionEnd = textarea?.selectionEnd ?? draft.markup.length
+    const nextMarkup =
+      draft.markup.slice(0, selectionStart) + token + draft.markup.slice(selectionEnd)
+    const nextCursor = selectionStart + token.length
+
+    setDraft((current) => (current ? { ...current, markup: nextMarkup } : current))
+    setVariableModalOpen(false)
+
+    window.requestAnimationFrame(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(nextCursor, nextCursor)
+    })
   }
 
   const currentDevice = devices[previewDevice]
@@ -1450,6 +1516,14 @@ export function App() {
             >
               <PanelsTopLeft size={18} />
               <span>Secoes</span>
+            </button>
+            <button
+              className={`sidebar__nav-item ${view === 'variables' ? 'is-active' : ''}`.trim()}
+              onClick={handleOpenVariables}
+              type="button"
+            >
+              <Braces size={18} />
+              <span>Variaveis</span>
             </button>
             {profile?.isAdmin && (
               <button
@@ -1865,6 +1939,67 @@ export function App() {
             </section>
           )}
 
+          {view === 'variables' && (
+            <section className="page">
+              <header className="page-heading">
+                <div>
+                  <h2>Variaveis</h2>
+                  <p>Catalogo Magento para inserir tokens sem digitar na mao.</p>
+                </div>
+              </header>
+
+              <section className="filters-bar">
+                <label className="filters-search">
+                  <Search size={16} />
+                  <input
+                    onChange={(event) => setVariableSearch(event.target.value)}
+                    placeholder="Buscar por nome, grupo ou token"
+                    value={variableSearch}
+                  />
+                </label>
+              </section>
+
+              {filteredVariableGroups.length === 0 ? (
+                <section className="empty-card">
+                  <Filter size={30} />
+                  <h3>Nenhuma variavel encontrada</h3>
+                  <p>Ajuste a busca para encontrar o token Magento desejado.</p>
+                </section>
+              ) : (
+                <section className="variable-catalog">
+                  {filteredVariableGroups.map((group) => (
+                    <article className="details-panel variable-group" key={group.id}>
+                      <div className="details-panel__header">
+                        <div>
+                          <h3>{group.label}</h3>
+                          <p>{group.variables.length} variaveis disponiveis</p>
+                        </div>
+                      </div>
+
+                      <div className="variable-list">
+                        {group.variables.map((variable) => (
+                          <div className="variable-row" key={variable.id}>
+                            <div className="variable-row__meta">
+                              <strong>{variable.label}</strong>
+                              <button
+                                className="variable-token"
+                                onClick={() => void handleCopyVariable(variable.token)}
+                                title="Copiar token"
+                                type="button"
+                              >
+                                {variable.token}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </section>
+              )}
+            </section>
+          )}
+
           {view === 'access' && profile?.isAdmin && (
             <section className="page">
               <header className="page-heading">
@@ -2052,6 +2187,10 @@ export function App() {
                       <button className="is-active" type="button">
                         Code Editor
                       </button>
+                      <button onClick={handleOpenVariableModal} type="button">
+                        <Braces size={14} />
+                        Adicionar variavel
+                      </button>
                       <button onClick={handleOpenAiModal} type="button">
                         <Sparkles size={14} />
                         Criar com IA
@@ -2071,6 +2210,7 @@ export function App() {
                     <textarea
                       aria-label="Editor de markup do email"
                       className="editor-textarea"
+                      ref={editorTextareaRef}
                       onChange={(event) =>
                         setDraft((current) =>
                           current
@@ -2127,7 +2267,7 @@ export function App() {
                 </section>
               </div>
 
-              {!aiModalOpen && (
+              {!aiModalOpen && !variableModalOpen && (
                 <footer className="bottom-bar">
                 <button className="secondary-button" onClick={() => setView('details')} type="button">
                   Cancelar
@@ -2360,6 +2500,74 @@ export function App() {
               <button className="danger-button" onClick={handleSignOut} type="button">
                 <LogOut size={16} />
                 Sair
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {variableModalOpen && draft && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card modal-card--wide" role="dialog">
+            <header className="modal-card__header">
+              <div>
+                <h3>Inserir variavel</h3>
+                <p>Escolha um token Magento e insira no cursor atual do codigo.</p>
+              </div>
+              <button aria-label="Fechar" className="icon-button" onClick={() => setVariableModalOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__body">
+              <label className="filters-search filters-search--modal">
+                <Search size={16} />
+                <input
+                  autoFocus
+                  onChange={(event) => setVariableSearch(event.target.value)}
+                  placeholder="Buscar por nome, grupo ou token"
+                  value={variableSearch}
+                />
+              </label>
+
+              {filteredVariableGroups.length === 0 ? (
+                <div className="empty-card empty-card--inline">
+                  <Filter size={24} />
+                  <h3>Nenhuma variavel encontrada</h3>
+                  <p>Ajuste a busca para localizar o token.</p>
+                </div>
+              ) : (
+                <div className="variable-catalog variable-catalog--modal">
+                  {filteredVariableGroups.map((group) => (
+                    <article className="variable-group variable-group--modal" key={group.id}>
+                      <div className="variable-group__header">
+                        <strong>{group.label}</strong>
+                      </div>
+
+                      <div className="variable-list">
+                        {group.variables.map((variable) => (
+                          <button
+                            className="variable-row variable-row--interactive"
+                            key={variable.id}
+                            onClick={() => handleInsertVariable(variable.token)}
+                            type="button"
+                          >
+                            <div className="variable-row__meta">
+                              <strong>{variable.label}</strong>
+                              <span className="variable-token">{variable.token}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <footer className="modal-card__actions">
+              <button className="secondary-button" onClick={() => setVariableModalOpen(false)} type="button">
+                Fechar
               </button>
             </footer>
           </section>

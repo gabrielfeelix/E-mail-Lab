@@ -727,7 +727,6 @@ button {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 18px;
-  overflow: hidden;
   box-shadow: var(--shadow);
 }
 
@@ -828,6 +827,10 @@ button {
 
 .preview-column {
   background: linear-gradient(180deg, #ffffff, #f5f8fc 100%);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: auto;
 }
 
 .preview-column__top h3 {
@@ -1047,6 +1050,7 @@ button {
   justify-content: center;
   padding: 20px;
   background: rgba(243, 246, 252, 0.9);
+  overflow: visible;
 }
 
 .gmail-preview__canvas {
@@ -1124,7 +1128,8 @@ button {
 
 .gmail-mobile__mail {
   margin: 0 16px 16px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
   border: 1px solid #e4e8f1;
   border-radius: 24px;
   background: #ffffff;
@@ -1245,6 +1250,10 @@ button {
   overflow: auto;
   padding: 0 0 18px;
   background: #eef2f7;
+}
+
+.filters-search--modal {
+  flex: initial;
 }
 
 .modal-preview__actions {
@@ -1688,6 +1697,87 @@ button {
 .version-list {
   display: grid;
   gap: 12px;
+}
+
+.variable-catalog {
+  display: grid;
+  gap: 18px;
+}
+
+.variable-catalog--modal {
+  max-height: 56vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.variable-group {
+  gap: 16px;
+}
+
+.variable-group--modal {
+  display: grid;
+  gap: 12px;
+}
+
+.variable-group__header strong {
+  font-size: 1rem;
+}
+
+.variable-list {
+  display: grid;
+  gap: 10px;
+}
+
+.variable-row {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.variable-row--interactive {
+  text-align: left;
+  transition: border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.variable-row--interactive:hover,
+.variable-row--interactive:focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.variable-row__meta {
+  display: grid;
+  gap: 6px;
+}
+
+.variable-row__meta strong {
+  color: var(--ink);
+  font-size: 0.96rem;
+}
+
+.variable-token {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--primary-strong);
+  font-family: 'IBM Plex Mono', Consolas, monospace;
+  font-size: 0.8rem;
+  text-align: left;
+  word-break: break-all;
+}
+
+.empty-card--inline {
+  padding: 28px 20px;
 }
 
 .version-card {

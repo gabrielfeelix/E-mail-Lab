@@ -77,29 +77,54 @@ function PreviewCanvas({
     const body = doc.body
 
     const measure = () => {
+      const bodyRect = body?.getBoundingClientRect()
+      const bodyTop = bodyRect?.top ?? 0
+      const bodyLeft = bodyRect?.left ?? 0
+      const descendants = Array.from(body?.querySelectorAll('*') ?? [])
+      const furthestRight = descendants.reduce((max, element) => {
+        const rect = element.getBoundingClientRect()
+        return Math.max(max, rect.right - bodyLeft)
+      }, Math.ceil(bodyRect?.width ?? 0))
+      const furthestBottom = descendants.reduce((max, element) => {
+        const rect = element.getBoundingClientRect()
+        return Math.max(max, rect.bottom - bodyTop)
+      }, Math.ceil(bodyRect?.height ?? 0))
       const nextWidth = Math.max(
         viewportWidth,
         html?.scrollWidth ?? 0,
         body?.scrollWidth ?? 0,
-        Math.ceil(body?.getBoundingClientRect().width ?? 0),
+        Math.ceil(bodyRect?.width ?? 0),
+        Math.ceil(furthestRight),
       )
       const nextHeight = Math.max(
         viewportHeight,
         html?.scrollHeight ?? 0,
         body?.scrollHeight ?? 0,
-        Math.ceil(body?.getBoundingClientRect().height ?? 0),
+        html?.offsetHeight ?? 0,
+        body?.offsetHeight ?? 0,
+        Math.ceil(bodyRect?.height ?? 0),
+        Math.ceil(furthestBottom),
       )
 
       setContentWidth(nextWidth)
-      setContentHeight(nextHeight)
+      setContentHeight(nextHeight + 8)
     }
 
     const resizeObserver = new ResizeObserver(() => {
       measure()
     })
+    const mutationObserver = new MutationObserver(() => {
+      measure()
+    })
 
     resizeObserver.observe(html)
     resizeObserver.observe(body)
+    mutationObserver.observe(body, {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    })
 
     const imageListeners = Array.from(doc.images).map((image) => {
       const listener = () => measure()
@@ -111,11 +136,16 @@ function PreviewCanvas({
       }
     })
 
-    const timers = [0, 80, 220, 500, 900].map((delay) => window.setTimeout(measure, delay))
+    if (doc.fonts?.ready) {
+      void doc.fonts.ready.then(() => measure()).catch(() => undefined)
+    }
+
+    const timers = [0, 80, 220, 500, 900, 1400, 2200].map((delay) => window.setTimeout(measure, delay))
     measure()
 
     cleanupRef.current = () => {
       resizeObserver.disconnect()
+      mutationObserver.disconnect()
       imageListeners.forEach((dispose) => dispose())
       timers.forEach((timer) => window.clearTimeout(timer))
     }
