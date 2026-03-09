@@ -27,7 +27,6 @@ import { CategoryField } from './components/CategoryField'
 import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
 import { getCurrentSession, loadCurrentProfile, signInWithPassword, signOutCurrentUser, signUpWithPassword, subscribeToAuth } from './lib/auth-store'
-import { sampleMarkup } from './data/presets'
 import { describeMarkup, inlineEmailDocument } from './lib/email'
 import { deleteRemoteSection, loadRemoteSections, saveRemoteSection } from './lib/section-store'
 import {
@@ -60,6 +59,7 @@ type TemplateFormState = {
   category: string
   name: string
   subject: string
+  useFavoriteSections: boolean
 }
 
 type SectionFormState = {
@@ -110,6 +110,7 @@ function createBlankForm(): TemplateFormState {
     category: '',
     name: '',
     subject: '',
+    useFavoriteSections: false,
   }
 }
 
@@ -122,7 +123,20 @@ function createSectionForm(kind: SectionKind): SectionFormState {
   }
 }
 
-function createDraft(template: TemplateFormState, companyId: CompanyId): TemplateRecord {
+function buildInitialMarkup(
+  useFavoriteSections: boolean,
+  favoriteHeader: SectionRecord | null,
+  favoriteFooter: SectionRecord | null,
+) {
+  if (!useFavoriteSections) {
+    return ''
+  }
+
+  const chunks = [favoriteHeader?.markup.trim() ?? '', favoriteFooter?.markup.trim() ?? ''].filter(Boolean)
+  return chunks.join('\n\n')
+}
+
+function createDraft(template: TemplateFormState, companyId: CompanyId, markup = ''): TemplateRecord {
   const timestamp = new Date().toISOString()
 
   return {
@@ -130,7 +144,7 @@ function createDraft(template: TemplateFormState, companyId: CompanyId): Templat
     companyId,
     createdAt: timestamp,
     id: crypto.randomUUID(),
-    markup: sampleMarkup,
+    markup,
     name: template.name.trim(),
     subject: template.subject.trim(),
     updatedAt: timestamp,
@@ -148,7 +162,7 @@ function normalizeTemplate(record: Partial<TemplateRecord>): TemplateRecord {
         : DEFAULT_COMPANY_ID,
     createdAt: typeof record.createdAt === 'string' ? record.createdAt : timestamp,
     id: typeof record.id === 'string' ? record.id : crypto.randomUUID(),
-    markup: typeof record.markup === 'string' && record.markup.trim() ? record.markup : sampleMarkup,
+    markup: typeof record.markup === 'string' ? record.markup : '',
     name: typeof record.name === 'string' && record.name.trim() ? record.name : 'template-sem-nome',
     subject: typeof record.subject === 'string' && record.subject.trim() ? record.subject : 'Sem assunto',
     updatedAt: timestamp,
@@ -229,7 +243,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [isHydrating, setIsHydrating] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [inlinedDocument, setInlinedDocument] = useState(sampleMarkup)
+  const [inlinedDocument, setInlinedDocument] = useState('')
 
   const currentCompany = useMemo(
     () => companies.find((company) => company.id === companyId) ?? FALLBACK_COMPANY,
@@ -277,7 +291,7 @@ export function App() {
     return [...new Set([...base, ...fromTemplates])].sort((left, right) => left.localeCompare(right))
   }, [categoryMap, companyId, companyTemplates, currentCompany.categories])
 
-  const deferredMarkup = useDeferredValue(draft?.markup ?? sampleMarkup)
+  const deferredMarkup = useDeferredValue(draft?.markup ?? '')
   const markupStats = useMemo(() => describeMarkup(deferredMarkup), [deferredMarkup])
 
   const isDirty = useMemo(() => {
@@ -557,11 +571,16 @@ export function App() {
   }
 
   const handleCreateTemplate = async () => {
-    const nextDraft = createDraft(createForm, companyId)
-
-    if (!nextDraft.name || !nextDraft.subject || !nextDraft.category) {
+    if (!createForm.name.trim() || !createForm.subject.trim() || !createForm.category.trim()) {
       return
     }
+
+    const initialMarkup = buildInitialMarkup(
+      createForm.useFavoriteSections,
+      favoriteHeader,
+      favoriteFooter,
+    )
+    const nextDraft = createDraft(createForm, companyId, initialMarkup)
 
     try {
       const saved = await persistTemplate(nextDraft)
@@ -1336,7 +1355,7 @@ export function App() {
 
               <CategoryField
                 categories={availableCategories}
-                label="Category *"
+                label="Categoria *"
                 onChange={(value) =>
                   setCreateForm((current) => ({
                     ...current,
@@ -1345,6 +1364,25 @@ export function App() {
                 }
                 value={createForm.category}
               />
+
+              <label className="field field--checkbox field--checkbox-card">
+                <input
+                  checked={createForm.useFavoriteSections}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      useFavoriteSections: event.target.checked,
+                    }))
+                  }
+                  type="checkbox"
+                />
+                <span>
+                  <strong>Iniciar com header e footer favoritados</strong>
+                  <small>
+                    Header: {favoriteHeader?.name ?? 'nenhum'} | Footer: {favoriteFooter?.name ?? 'nenhum'}
+                  </small>
+                </span>
+              </label>
             </div>
 
             <footer className="modal-card__actions">

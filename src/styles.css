@@ -1367,9 +1367,31 @@ button {
   align-items: center;
 }
 
+.field--checkbox-card {
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-alt);
+}
+
 .field--checkbox input {
   width: 18px;
   height: 18px;
+}
+
+.field--checkbox span {
+  display: grid;
+  gap: 4px;
+}
+
+.field--checkbox strong {
+  font-size: 0.95rem;
+}
+
+.field--checkbox small {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .ai-summary {
