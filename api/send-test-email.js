@@ -92,9 +92,15 @@ export default async function handler(req, res) {
   const smtpSecure = readEnv('SMTP_SECURE') === 'true' || smtpPort === 465
 
   if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
+    const missing = [
+      !smtpHost && 'SMTP_HOST',
+      !smtpUser && 'SMTP_USER',
+      !smtpPass && 'SMTP_PASS',
+      !smtpFrom && 'EMAIL_LAB_TEST_FROM',
+    ].filter(Boolean)
     res.status(500).json({
       ok: false,
-      message: 'Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS e EMAIL_LAB_TEST_FROM no servidor.',
+      message: `Configure ${missing.join(', ')} no servidor.`,
     })
     return
   }
