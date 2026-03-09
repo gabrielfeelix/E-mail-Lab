@@ -277,7 +277,14 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--ink);
+}
+
+.topbar__user-wrap {
+  position: relative;
 }
 
 .topbar__user-dot {
@@ -286,6 +293,42 @@ button {
   border-radius: 999px;
   background: var(--primary);
   box-shadow: 0 0 0 4px var(--primary-soft);
+}
+
+.topbar__menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 6px;
+  min-width: 190px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.14);
+}
+
+.topbar__menu-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.topbar__menu-item:hover,
+.topbar__menu-item:focus-visible {
+  background: var(--surface-alt);
+  border-color: var(--border);
+  outline: none;
 }
 
 .shell__body {
@@ -310,6 +353,7 @@ button {
 
 .page--editor {
   gap: 16px;
+  min-height: calc(100vh - 170px);
 }
 
 .page-heading {
@@ -674,6 +718,8 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(420px, 0.95fr);
   gap: 20px;
+  align-items: stretch;
+  min-height: calc(100vh - 280px);
 }
 
 .editor-column,
@@ -688,6 +734,8 @@ button {
 .editor-column {
   background: linear-gradient(180deg, #102033, #0b1728 28%, #091320 100%);
   color: #edf3ff;
+  display: grid;
+  grid-template-rows: auto 1fr;
 }
 
 .editor-column__top,
@@ -731,8 +779,9 @@ button {
 }
 
 .editor-column__surface {
-  display: block;
-  min-height: 680px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
 }
 
 .editor-column__surface-top {
@@ -765,8 +814,8 @@ button {
 .editor-textarea {
   display: block;
   width: 100%;
-  min-height: 640px;
-  height: calc(100vh - 330px);
+  min-height: 0;
+  height: 100%;
   padding: 14px 16px;
   border: 0;
   resize: vertical;
@@ -1213,6 +1262,106 @@ button {
   resize: vertical;
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at top left, rgba(201, 24, 24, 0.08), transparent 28%),
+    linear-gradient(180deg, #f4f6fb 0%, #eef2f7 100%);
+}
+
+.auth-shell--loading {
+  font-size: 1.1rem;
+  color: var(--ink);
+}
+
+.auth-panel {
+  width: min(100%, 1120px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 420px);
+  gap: 24px;
+  align-items: stretch;
+}
+
+.auth-panel__hero,
+.auth-card {
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.auth-panel__hero {
+  padding: 36px;
+}
+
+.auth-panel__eyebrow {
+  display: inline-block;
+  margin-bottom: 18px;
+  color: var(--primary);
+  font-size: 0.76rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.auth-panel__hero h1 {
+  margin: 0 0 14px;
+  font-size: 3.2rem;
+  line-height: 1;
+}
+
+.auth-panel__hero p {
+  margin: 0;
+  max-width: 40rem;
+  color: var(--muted);
+  font-size: 1.08rem;
+}
+
+.auth-card {
+  overflow: hidden;
+}
+
+.auth-card__tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  padding: 8px;
+  background: var(--surface-alt);
+}
+
+.auth-card__tabs button {
+  min-height: 42px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.auth-card__tabs button.is-active {
+  background: #ffffff;
+  color: var(--ink);
+  border-color: var(--border);
+}
+
+.auth-card__body {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+}
+
+.auth-card__error {
+  padding: 12px 14px;
+  border: 1px solid rgba(180, 35, 24, 0.22);
+  border-radius: 12px;
+  background: #fff4f3;
+  color: var(--danger);
+}
+
+.auth-card__submit {
+  width: 100%;
+}
+
 .field--checkbox {
   grid-template-columns: auto 1fr;
   align-items: center;
@@ -1312,6 +1461,10 @@ button {
   .topbar {
     padding-left: 18px;
     padding-right: 18px;
+  }
+
+  .auth-panel {
+    grid-template-columns: 1fr;
   }
 
   .template-table {

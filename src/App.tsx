@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState, startTransition } from 'react'
+import type { Session } from '@supabase/supabase-js'
 import {
   ChevronDown,
   ChevronRight,
@@ -7,10 +8,12 @@ import {
   FilePenLine,
   FolderOpen,
   LayoutTemplate,
+  LogOut,
   Monitor,
   PanelsTopLeft,
   Plus,
   Save,
+  Settings,
   Smartphone,
   Sparkles,
   Star,
@@ -19,9 +22,11 @@ import {
   UserRound,
   X,
 } from 'lucide-react'
+import { AuthScreen } from './components/AuthScreen'
 import { CategoryField } from './components/CategoryField'
 import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
+import { getCurrentSession, loadCurrentProfile, signInWithPassword, signOutCurrentUser, signUpWithPassword, subscribeToAuth } from './lib/auth-store'
 import { sampleMarkup } from './data/presets'
 import { describeMarkup, inlineEmailDocument } from './lib/email'
 import { deleteRemoteSection, loadRemoteSections, saveRemoteSection } from './lib/section-store'
@@ -33,6 +38,7 @@ import {
   saveRemoteTemplate,
 } from './lib/template-store'
 import type { SectionKind, SectionRecord } from './types/section'
+import type { ProfileRecord } from './types/profile'
 import type { TemplateRecord } from './types/template'
 
 type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections'
@@ -67,8 +73,6 @@ const STORAGE_KEYS = ['email-lab/templates-v2', 'email-lab/templates'] as const
 const SELECTED_COMPANY_KEY = 'email-lab/current-company'
 const DEFAULT_COMPANY_ID: CompanyId = 'pcyes'
 const FALLBACK_COMPANY = companies[0]!
-const LOGGED_USER_NAME = 'Gabriel Felix'
-
 const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'short',
   timeStyle: 'short',
@@ -198,6 +202,12 @@ export function App() {
     buildCategoryMap([], initialTemplates),
   )
   const [companyId, setCompanyId] = useState<CompanyId>(() => loadSelectedCompany())
+  const [session, setSession] = useState<Session | null>(null)
+  const [profile, setProfile] = useState<ProfileRecord | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authSubmitting, setAuthSubmitting] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [view, setView] = useState<AppView>('templates')
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
   const [draft, setDraft] = useState<TemplateRecord | null>(null)
@@ -225,6 +235,8 @@ export function App() {
     () => companies.find((company) => company.id === companyId) ?? FALLBACK_COMPANY,
     [companyId],
   )
+  const currentUserName = profile?.fullName || session?.user.user_metadata.full_name || session?.user.email || 'Conta'
+  const currentUserEmail = profile?.email || session?.user.email || ''
 
   const sortedTemplates = useMemo(
     () =>
@@ -313,6 +325,44 @@ export function App() {
   }
 
   useEffect(() => {
+    let active = true
+
+    getCurrentSession()
+      .then((nextSession) => {
+        if (active) {
+          setSession(nextSession)
+          setAuthLoading(false)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAuthLoading(false)
+        }
+      })
+
+    const subscription = subscribeToAuth((nextSession) => {
+      setSession(nextSession)
+      setProfileMenuOpen(false)
+    })
+
+    return () => {
+      active = false
+      subscription?.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!session?.user.id) {
+      setProfile(null)
+      return
+    }
+
+    loadCurrentProfile(session.user.id)
+      .then((nextProfile) => setProfile(nextProfile))
+      .catch(() => setProfile(null))
+  }, [session?.user.id])
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return
     }
@@ -322,6 +372,11 @@ export function App() {
   }, [companyId, templates])
 
   useEffect(() => {
+    if (!session) {
+      setIsHydrating(false)
+      return
+    }
+
     let cancelled = false
 
     async function hydrateWorkspace() {
@@ -359,7 +414,7 @@ export function App() {
     return () => {
       cancelled = true
     }
-  }, [initialTemplates])
+  }, [initialTemplates, session])
 
   useEffect(() => {
     if ((view !== 'editor' && view !== 'preview') || !draft) {
@@ -733,6 +788,43 @@ export function App() {
     setPreviewDevice(deviceId)
   }
 
+  const handleSignIn = async (email: string, password: string) => {
+    setAuthSubmitting(true)
+    try {
+      await signInWithPassword(email, password)
+    } finally {
+      setAuthSubmitting(false)
+    }
+  }
+
+  const handleSignUp = async (fullName: string, email: string, password: string) => {
+    setAuthSubmitting(true)
+    try {
+      const nextSession = await signUpWithPassword(email, password, fullName)
+      if (!nextSession) {
+        setNotice('Conta criada. Se o projeto ainda exigir confirmacao, desative em Supabase Auth > Email.')
+      }
+    } finally {
+      setAuthSubmitting(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    await signOutCurrentUser()
+    setView('templates')
+    setDraft(null)
+    setProfileMenuOpen(false)
+    setSettingsOpen(false)
+  }
+
+  if (authLoading) {
+    return <main className="auth-shell auth-shell--loading">Carregando...</main>
+  }
+
+  if (!session) {
+    return <AuthScreen isSubmitting={authSubmitting} onSignIn={handleSignIn} onSignUp={handleSignUp} />
+  }
+
   return (
     <main className="shell" style={companyThemeStyle(currentCompany.theme)}>
       <aside className="sidebar">
@@ -747,7 +839,7 @@ export function App() {
           </span>
           <span className="account-card__meta">
             <span className="account-card__label">Account</span>
-            <strong>{LOGGED_USER_NAME}</strong>
+            <strong>{currentUserName}</strong>
           </span>
         </div>
 
@@ -817,10 +909,24 @@ export function App() {
             ))}
           </div>
 
-          <div className="topbar__user">
+          <div className="topbar__user-wrap">
+          <button className="topbar__user" onClick={() => setProfileMenuOpen((current) => !current)} type="button">
             <span className="topbar__user-dot" />
-            <span>{LOGGED_USER_NAME}</span>
+            <span>{currentUserName}</span>
             <ChevronDown size={14} />
+          </button>
+          {profileMenuOpen && (
+            <div className="topbar__menu">
+              <button className="topbar__menu-item" onClick={() => { setSettingsOpen(true); setProfileMenuOpen(false) }} type="button">
+                <Settings size={15} />
+                Configurações
+              </button>
+              <button className="topbar__menu-item" onClick={handleSignOut} type="button">
+                <LogOut size={15} />
+                Sair
+              </button>
+            </div>
+          )}
           </div>
         </header>
 
@@ -1132,7 +1238,6 @@ export function App() {
                   <div className="preview-column__top">
                     <div>
                       <h3>Preview</h3>
-                      <p>Shell visual separada do markup. O copy continua trazendo apenas o HTML do template.</p>
                     </div>
 
                     <div aria-label="Dispositivo" className="device-switch" role="tablist">
@@ -1307,6 +1412,45 @@ export function App() {
               </button>
               <button className="primary-button" onClick={handleSaveSection} type="button">
                 Salvar
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {settingsOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card" role="dialog">
+            <header className="modal-card__header">
+              <div>
+                <h3>Configurações</h3>
+                <p>Informações da conta autenticada.</p>
+              </div>
+              <button aria-label="Fechar" className="icon-button" onClick={() => setSettingsOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__body">
+              <div className="ai-summary">
+                <div>
+                  <span>Nome</span>
+                  <strong>{currentUserName}</strong>
+                </div>
+                <div>
+                  <span>E-mail</span>
+                  <strong>{currentUserEmail}</strong>
+                </div>
+              </div>
+            </div>
+
+            <footer className="modal-card__actions">
+              <button className="secondary-button" onClick={() => setSettingsOpen(false)} type="button">
+                Fechar
+              </button>
+              <button className="danger-button" onClick={handleSignOut} type="button">
+                <LogOut size={16} />
+                Sair
               </button>
             </footer>
           </section>

@@ -19,6 +19,36 @@ create table if not exists public.companies (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null unique,
+  full_name text not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.company_memberships (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  company_id text not null references public.companies(id) on delete cascade,
+  role text not null default 'member',
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  primary key (user_id, company_id)
+);
+
+create or replace function public.is_company_member(target_company_id text)
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1
+    from public.company_memberships
+    where company_id = target_company_id
+      and user_id = auth.uid()
+  );
+$$;
+
 create table if not exists public.template_categories (
   id uuid primary key default gen_random_uuid(),
   company_id text not null references public.companies(id) on delete cascade,
@@ -54,6 +84,9 @@ create table if not exists public.email_sections (
 create index if not exists template_categories_company_id_idx
   on public.template_categories (company_id);
 
+create index if not exists company_memberships_company_id_idx
+  on public.company_memberships (company_id);
+
 create index if not exists email_templates_company_id_idx
   on public.email_templates (company_id);
 
@@ -66,6 +99,18 @@ create index if not exists email_sections_company_id_idx
 drop trigger if exists companies_set_updated_at on public.companies;
 create trigger companies_set_updated_at
 before update on public.companies
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists profiles_set_updated_at on public.profiles;
+create trigger profiles_set_updated_at
+before update on public.profiles
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists company_memberships_set_updated_at on public.company_memberships;
+create trigger company_memberships_set_updated_at
+before update on public.company_memberships
 for each row
 execute function public.set_updated_at();
 
@@ -284,62 +329,124 @@ values
   ('quati', 'Relacionamento')
 on conflict (company_id, name) do nothing;
 
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if split_part(lower(new.email), '@', 2) <> 'oderco.com.br' then
+    raise exception 'Somente emails @oderco.com.br podem criar conta';
+  end if;
+
+  insert into public.profiles (id, email, full_name)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1))
+  )
+  on conflict (id) do update
+  set
+    email = excluded.email,
+    full_name = excluded.full_name,
+    updated_at = timezone('utc', now());
+
+  insert into public.company_memberships (user_id, company_id)
+  select new.id, companies.id
+  from public.companies
+  on conflict (user_id, company_id) do nothing;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row
+execute function public.handle_new_user();
+
+alter table public.profiles enable row level security;
+alter table public.company_memberships enable row level security;
 alter table public.companies enable row level security;
 alter table public.template_categories enable row level security;
 alter table public.email_templates enable row level security;
 alter table public.email_sections enable row level security;
 
-drop policy if exists "public companies read" on public.companies;
-create policy "public companies read"
+drop policy if exists "profiles self read" on public.profiles;
+create policy "profiles self read"
+on public.profiles
+for select
+to authenticated
+using (id = auth.uid());
+
+drop policy if exists "profiles self write" on public.profiles;
+create policy "profiles self write"
+on public.profiles
+for update
+to authenticated
+using (id = auth.uid())
+with check (id = auth.uid());
+
+drop policy if exists "memberships self read" on public.company_memberships;
+create policy "memberships self read"
+on public.company_memberships
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "member companies read" on public.companies;
+create policy "member companies read"
 on public.companies
 for select
-to anon, authenticated
-using (true);
+to authenticated
+using (public.is_company_member(id));
 
-drop policy if exists "public categories read" on public.template_categories;
-create policy "public categories read"
+drop policy if exists "member categories read" on public.template_categories;
+create policy "member categories read"
 on public.template_categories
 for select
-to anon, authenticated
-using (true);
+to authenticated
+using (public.is_company_member(company_id));
 
-drop policy if exists "public categories write" on public.template_categories;
-create policy "public categories write"
+drop policy if exists "member categories write" on public.template_categories;
+create policy "member categories write"
 on public.template_categories
 for all
-to anon, authenticated
-using (true)
-with check (true);
+to authenticated
+using (public.is_company_member(company_id))
+with check (public.is_company_member(company_id));
 
-drop policy if exists "public templates read" on public.email_templates;
-create policy "public templates read"
+drop policy if exists "member templates read" on public.email_templates;
+create policy "member templates read"
 on public.email_templates
 for select
-to anon, authenticated
-using (true);
+to authenticated
+using (public.is_company_member(company_id));
 
-drop policy if exists "public templates write" on public.email_templates;
-create policy "public templates write"
+drop policy if exists "member templates write" on public.email_templates;
+create policy "member templates write"
 on public.email_templates
 for all
-to anon, authenticated
-using (true)
-with check (true);
+to authenticated
+using (public.is_company_member(company_id))
+with check (public.is_company_member(company_id));
 
-drop policy if exists "public sections read" on public.email_sections;
-create policy "public sections read"
+drop policy if exists "member sections read" on public.email_sections;
+create policy "member sections read"
 on public.email_sections
 for select
-to anon, authenticated
-using (true);
+to authenticated
+using (public.is_company_member(company_id));
 
-drop policy if exists "public sections write" on public.email_sections;
-create policy "public sections write"
+drop policy if exists "member sections write" on public.email_sections;
+create policy "member sections write"
 on public.email_sections
 for all
-to anon, authenticated
-using (true)
-with check (true);
+to authenticated
+using (public.is_company_member(company_id))
+with check (public.is_company_member(company_id));
 
 comment on table public.companies is
   'Empresas/projetos do E-mail Lab com tema visual e nota opcional.';
@@ -352,3 +459,9 @@ comment on table public.email_templates is
 
 comment on table public.email_sections is
   'Secoes reutilizaveis de header e footer por empresa, com favorito para uso rapido e IA.';
+
+comment on table public.profiles is
+  'Perfil basico do usuario autenticado no E-mail Lab.';
+
+comment on table public.company_memberships is
+  'Quais empresas cada usuario autenticado pode acessar.';
