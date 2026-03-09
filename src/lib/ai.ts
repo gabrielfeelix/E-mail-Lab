@@ -21,6 +21,8 @@ type GenerateEmailMarkupResponse = {
 
 const browserGeminiKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim()
 const browserGeminiModel = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-3-flash-preview').trim()
+const browserGeminiThinkingLevel = (import.meta.env.VITE_GEMINI_THINKING_LEVEL || 'minimal').trim()
+const GENERATION_TIMEOUT_MS = 45000
 
 function buildPrompt(input: GenerateEmailMarkupInput) {
   const sections = [
@@ -87,46 +89,63 @@ function extractMarkup(text: string) {
 }
 
 async function generateEmailMarkupInBrowser(input: GenerateEmailMarkupInput) {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${browserGeminiModel}:generateContent?key=${browserGeminiKey}`,
-    {
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: buildPrompt(input),
-              },
-            ],
-            role: 'user',
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${browserGeminiModel}:generateContent?key=${browserGeminiKey}`,
+      {
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: buildPrompt(input),
+                },
+              ],
+              role: 'user',
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: 4096,
+            temperature: 0.4,
+            thinkingConfig: {
+              thinkingLevel: browserGeminiThinkingLevel,
+            },
           },
-        ],
-        generationConfig: {
-          maxOutputTokens: 8192,
-          temperature: 0.6,
+        }),
+        headers: {
+          'Content-Type': 'application/json',
         },
-      }),
-      headers: {
-        'Content-Type': 'application/json',
+        method: 'POST',
+        signal: controller.signal,
       },
-      method: 'POST',
-    },
-  )
+    )
 
-  const payload = await response.json().catch(() => ({}))
+    const payload = await response.json().catch(() => ({}))
 
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || payload?.message || 'Gemini nao conseguiu gerar o email.')
+    if (!response.ok) {
+      throw new Error(payload?.error?.message || payload?.message || 'Gemini nao conseguiu gerar o email.')
+    }
+
+    const parts = payload?.candidates?.[0]?.content?.parts || []
+    const markup = extractMarkup(parts.map((part: { text?: string }) => String(part?.text || '')).join('\n'))
+
+    if (!markup) {
+      throw new Error('Gemini respondeu sem markup utilizavel.')
+    }
+
+    return markup
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('A IA demorou demais para responder. Tente um briefing mais objetivo ou gere novamente.')
+    }
+
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
   }
-
-  const parts = payload?.candidates?.[0]?.content?.parts || []
-  const markup = extractMarkup(parts.map((part: { text?: string }) => String(part?.text || '')).join('\n'))
-
-  if (!markup) {
-    throw new Error('Gemini respondeu sem markup utilizavel.')
-  }
-
-  return markup
 }
 
 export async function generateEmailMarkup(input: GenerateEmailMarkupInput) {

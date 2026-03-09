@@ -77,6 +77,8 @@ function buildImagePart(dataUrl) {
   }
 }
 
+const GENERATION_TIMEOUT_MS = 45000
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ ok: false, message: 'Metodo nao permitido.' })
@@ -95,6 +97,12 @@ export default async function handler(req, res) {
       process.env.VITE_GEMINI_MODEL ||
       'gemini-3-flash-preview',
   ).trim()
+  const thinkingLevel = String(
+    process.env.GEMINI_THINKING_LEVEL ||
+      process.env.GOOGLE_THINKING_LEVEL ||
+      process.env.VITE_GEMINI_THINKING_LEVEL ||
+      'minimal',
+  ).trim()
 
   if (!apiKey) {
     res.status(500).json({ ok: false, message: 'GEMINI_API_KEY nao configurada no servidor.' })
@@ -109,34 +117,58 @@ export default async function handler(req, res) {
     return
   }
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: buildPrompt(body),
-              },
-              ...(imagePart ? [imagePart] : []),
-            ],
-            role: 'user',
-          },
-        ],
-        generationConfig: {
-          maxOutputTokens: 8192,
-          temperature: 0.6,
-        },
-      }),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      method: 'POST',
-    },
-  )
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS)
 
-  const payload = await response.json().catch(() => ({}))
+  let response
+  let payload
+
+  try {
+    response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: buildPrompt(body),
+                },
+                ...(imagePart ? [imagePart] : []),
+              ],
+              role: 'user',
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: 4096,
+            temperature: 0.4,
+            thinkingConfig: {
+              thinkingLevel,
+            },
+          },
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+        signal: controller.signal,
+      },
+    )
+
+    payload = await response.json().catch(() => ({}))
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      res.status(504).json({
+        ok: false,
+        message: 'A IA demorou demais para responder. Tente um briefing mais objetivo ou gere novamente.',
+      })
+      return
+    }
+
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
 
   if (!response.ok) {
     res.status(response.status).json({
