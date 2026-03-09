@@ -1,6 +1,7 @@
 import { companies, type CompanyId } from '../data/companies'
 import { getSupabaseBrowserClient } from './supabase'
 import type { TemplateRecord } from '../types/template'
+import type { TemplateVersionRecord } from '../types/template-version'
 
 type TemplateRow = {
   category: string
@@ -19,6 +20,18 @@ type CategoryRow = {
   name: string
 }
 
+type TemplateVersionRow = {
+  category: string
+  company_id: string
+  created_at: string
+  id: string
+  markup: string
+  name: string
+  subject: string
+  template_id: string
+  version_number: number
+}
+
 function isCompanyId(value: string): value is CompanyId {
   return companies.some((company) => company.id === value)
 }
@@ -34,6 +47,69 @@ function mapTemplateRow(row: TemplateRow): TemplateRecord {
     subject: row.subject,
     updatedAt: row.updated_at,
   }
+}
+
+function mapTemplateVersionRow(row: TemplateVersionRow): TemplateVersionRecord {
+  return {
+    category: row.category,
+    companyId: isCompanyId(row.company_id) ? row.company_id : 'pcyes',
+    createdAt: row.created_at,
+    id: row.id,
+    markup: row.markup,
+    name: row.name,
+    subject: row.subject,
+    templateId: row.template_id,
+    versionNumber: row.version_number,
+  }
+}
+
+async function snapshotTemplateVersion(template: TemplateRecord) {
+  const client = getSupabaseBrowserClient()
+
+  const latest = await client
+    .from('email_template_versions')
+    .select('id, company_id, template_id, version_number, category, name, subject, markup, created_at')
+    .eq('template_id', template.id)
+    .order('version_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latest.error) {
+    throw latest.error
+  }
+
+  const latestVersion = latest.data ? mapTemplateVersionRow(latest.data as TemplateVersionRow) : null
+
+  if (
+    latestVersion &&
+    latestVersion.category === template.category &&
+    latestVersion.name === template.name &&
+    latestVersion.subject === template.subject &&
+    latestVersion.markup === template.markup
+  ) {
+    return latestVersion
+  }
+
+  const insertResult = await client
+    .from('email_template_versions')
+    .insert({
+      category: template.category,
+      company_id: template.companyId,
+      created_at: template.updatedAt,
+      markup: template.markup,
+      name: template.name,
+      subject: template.subject,
+      template_id: template.id,
+      version_number: (latestVersion?.versionNumber ?? 0) + 1,
+    })
+    .select('id, company_id, template_id, version_number, category, name, subject, markup, created_at')
+    .single()
+
+  if (insertResult.error) {
+    throw insertResult.error
+  }
+
+  return mapTemplateVersionRow(insertResult.data as TemplateVersionRow)
 }
 
 async function ensureCategory(companyId: CompanyId, category: string) {
@@ -150,6 +226,8 @@ export async function saveRemoteTemplate(template: TemplateRecord) {
     throw new Error('O markup retornado pelo banco nao corresponde ao que foi salvo.')
   }
 
+  await snapshotTemplateVersion(saved)
+
   return saved
 }
 
@@ -185,6 +263,22 @@ export async function importTemplatesToRemote(templates: TemplateRecord[]) {
   }
 
   return importedTemplates
+}
+
+export async function loadTemplateVersions(templateId: string) {
+  const client = getSupabaseBrowserClient()
+
+  const result = await client
+    .from('email_template_versions')
+    .select('id, company_id, template_id, version_number, category, name, subject, markup, created_at')
+    .eq('template_id', templateId)
+    .order('version_number', { ascending: false })
+
+  if (result.error) {
+    throw result.error
+  }
+
+  return (result.data ?? []).map((row) => mapTemplateVersionRow(row as TemplateVersionRow))
 }
 
 export function buildCategoryMap(remoteCategories: CategoryRow[], remoteTemplates: TemplateRecord[]) {

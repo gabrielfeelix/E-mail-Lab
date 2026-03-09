@@ -70,6 +70,19 @@ create table if not exists public.email_templates (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.email_template_versions (
+  id uuid primary key default gen_random_uuid(),
+  template_id uuid not null references public.email_templates(id) on delete cascade,
+  company_id text not null references public.companies(id) on delete cascade,
+  version_number integer not null,
+  category text not null,
+  name text not null,
+  subject text not null,
+  markup text not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  unique (template_id, version_number)
+);
+
 create table if not exists public.email_sections (
   id uuid primary key default gen_random_uuid(),
   company_id text not null references public.companies(id) on delete cascade,
@@ -135,6 +148,12 @@ create index if not exists email_templates_company_id_idx
 
 create index if not exists email_templates_updated_at_idx
   on public.email_templates (updated_at desc);
+
+create index if not exists email_template_versions_template_id_idx
+  on public.email_template_versions (template_id, version_number desc);
+
+create index if not exists email_template_versions_company_id_idx
+  on public.email_template_versions (company_id);
 
 create index if not exists email_sections_company_id_idx
   on public.email_sections (company_id);
@@ -459,6 +478,7 @@ alter table public.company_memberships enable row level security;
 alter table public.companies enable row level security;
 alter table public.template_categories enable row level security;
 alter table public.email_templates enable row level security;
+alter table public.email_template_versions enable row level security;
 alter table public.email_sections enable row level security;
 alter table public.company_brand_profiles enable row level security;
 
@@ -521,6 +541,21 @@ to authenticated
 using (public.is_company_member(company_id))
 with check (public.is_company_member(company_id));
 
+drop policy if exists "member template versions read" on public.email_template_versions;
+create policy "member template versions read"
+on public.email_template_versions
+for select
+to authenticated
+using (public.is_company_member(company_id));
+
+drop policy if exists "member template versions write" on public.email_template_versions;
+create policy "member template versions write"
+on public.email_template_versions
+for all
+to authenticated
+using (public.is_company_member(company_id))
+with check (public.is_company_member(company_id));
+
 drop policy if exists "member sections read" on public.email_sections;
 create policy "member sections read"
 on public.email_sections
@@ -559,6 +594,9 @@ comment on table public.template_categories is
 
 comment on table public.email_templates is
   'Templates de email do E-mail Lab. Defina auth e policies antes de liberar escrita pelo browser.';
+
+comment on table public.email_template_versions is
+  'Snapshots versionados de cada template para historico e restauracao.';
 
 comment on table public.email_sections is
   'Secoes reutilizaveis de header e footer por empresa, com favorito para uso rapido e IA.';

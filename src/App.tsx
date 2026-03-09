@@ -46,6 +46,7 @@ import {
   buildCategoryMap,
   deleteRemoteTemplate,
   importTemplatesToRemote,
+  loadTemplateVersions,
   loadRemoteWorkspace,
   saveRemoteTemplate,
 } from './lib/template-store'
@@ -53,6 +54,7 @@ import type { SectionKind, SectionRecord } from './types/section'
 import type { BrandProfileRecord } from './types/brand-profile'
 import type { ProfileRecord } from './types/profile'
 import type { TemplateRecord } from './types/template'
+import type { TemplateVersionRecord } from './types/template-version'
 
 type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections' | 'brand'
 type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
@@ -312,6 +314,8 @@ export function App() {
   const [isHydrating, setIsHydrating] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isSavingBrandProfile, setIsSavingBrandProfile] = useState(false)
+  const [templateVersions, setTemplateVersions] = useState<TemplateVersionRecord[]>([])
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false)
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
   const [settingsPassword, setSettingsPassword] = useState('')
   const [settingsPasswordConfirm, setSettingsPasswordConfirm] = useState('')
@@ -585,6 +589,37 @@ export function App() {
     const timeout = window.setTimeout(() => setNotice(null), 3200)
     return () => window.clearTimeout(timeout)
   }, [notice])
+
+  useEffect(() => {
+    if (view !== 'details' || !draft?.id) {
+      setTemplateVersions([])
+      return
+    }
+
+    let cancelled = false
+    setIsLoadingVersions(true)
+
+    loadTemplateVersions(draft.id)
+      .then((versions) => {
+        if (!cancelled) {
+          setTemplateVersions(versions)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTemplateVersions([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingVersions(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [draft?.id, view])
 
   const syncTemplateInState = (template: TemplateRecord) => {
     setTemplates((current) => {
@@ -906,6 +941,29 @@ export function App() {
       setNotice('Template excluido.')
     } catch {
       setNotice('Nao foi possivel excluir o template.')
+    }
+  }
+
+  const handleRestoreVersion = async (version: TemplateVersionRecord) => {
+    if (!draft) {
+      return
+    }
+
+    const restoredDraft: TemplateRecord = {
+      ...draft,
+      category: version.category,
+      markup: version.markup,
+      name: version.name,
+      subject: version.subject,
+      updatedAt: new Date().toISOString(),
+    }
+
+    try {
+      const saved = await persistTemplate(restoredDraft)
+      setDraft(saved)
+      setNotice(`Versao ${version.versionNumber} restaurada.`)
+    } catch {
+      setNotice('Nao foi possivel restaurar a versao selecionada.')
     }
   }
 
@@ -1633,6 +1691,43 @@ export function App() {
                         <dd>{dateFormatter.format(new Date(draft.updatedAt))}</dd>
                       </div>
                     </dl>
+                  </div>
+                </section>
+
+                <section className="details-page__panel">
+                  <div className="details-panel">
+                    <div className="details-panel__header">
+                      <h3>Historico</h3>
+                    </div>
+
+                    {isLoadingVersions ? (
+                      <p>Carregando versoes salvas deste template.</p>
+                    ) : templateVersions.length === 0 ? (
+                      <p>Nenhuma versao registrada ainda.</p>
+                    ) : (
+                      <div className="version-list">
+                        {templateVersions.map((version) => (
+                          <article className="version-card" key={version.id}>
+                            <div className="version-card__meta">
+                              <strong>Versao {version.versionNumber}</strong>
+                              <span>{dateFormatter.format(new Date(version.createdAt))}</span>
+                            </div>
+                            <div className="version-card__info">
+                              <span>{version.name}</span>
+                              <span>{version.subject}</span>
+                              <span>{version.category}</span>
+                            </div>
+                            <button
+                              className="secondary-button"
+                              onClick={() => handleRestoreVersion(version)}
+                              type="button"
+                            >
+                              Restaurar
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </section>
               </div>
