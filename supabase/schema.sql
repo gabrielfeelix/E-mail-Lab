@@ -81,6 +81,20 @@ create table if not exists public.email_sections (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.company_brand_profiles (
+  id uuid primary key default gen_random_uuid(),
+  company_id text not null unique references public.companies(id) on delete cascade,
+  logo_url text not null default '',
+  primary_color text not null default '',
+  secondary_color text not null default '',
+  background_color text not null default '',
+  typography text not null default '',
+  additional_context text not null default '',
+  example_markup text not null default '',
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create index if not exists template_categories_company_id_idx
   on public.template_categories (company_id);
 
@@ -95,6 +109,9 @@ create index if not exists email_templates_updated_at_idx
 
 create index if not exists email_sections_company_id_idx
   on public.email_sections (company_id);
+
+create index if not exists company_brand_profiles_company_id_idx
+  on public.company_brand_profiles (company_id);
 
 drop trigger if exists companies_set_updated_at on public.companies;
 create trigger companies_set_updated_at
@@ -129,6 +146,12 @@ execute function public.set_updated_at();
 drop trigger if exists email_sections_set_updated_at on public.email_sections;
 create trigger email_sections_set_updated_at
 before update on public.email_sections
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists company_brand_profiles_set_updated_at on public.company_brand_profiles;
+create trigger company_brand_profiles_set_updated_at
+before update on public.company_brand_profiles
 for each row
 execute function public.set_updated_at();
 
@@ -329,6 +352,37 @@ values
   ('quati', 'Relacionamento')
 on conflict (company_id, name) do nothing;
 
+insert into public.company_brand_profiles (
+  company_id,
+  logo_url,
+  primary_color,
+  secondary_color,
+  background_color,
+  typography,
+  additional_context,
+  example_markup
+)
+select
+  companies.id,
+  '',
+  companies.theme ->> 'primary',
+  companies.theme ->> 'primarySoft',
+  companies.theme ->> 'bg',
+  'Arial, Helvetica, sans-serif',
+  coalesce(companies.note, ''),
+  ''
+from public.companies
+on conflict (company_id) do update
+set
+  primary_color = excluded.primary_color,
+  secondary_color = excluded.secondary_color,
+  background_color = excluded.background_color,
+  additional_context = case
+    when public.company_brand_profiles.additional_context = '' then excluded.additional_context
+    else public.company_brand_profiles.additional_context
+  end,
+  updated_at = timezone('utc', now());
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -373,6 +427,7 @@ alter table public.companies enable row level security;
 alter table public.template_categories enable row level security;
 alter table public.email_templates enable row level security;
 alter table public.email_sections enable row level security;
+alter table public.company_brand_profiles enable row level security;
 
 drop policy if exists "profiles self read" on public.profiles;
 create policy "profiles self read"
@@ -448,6 +503,21 @@ to authenticated
 using (public.is_company_member(company_id))
 with check (public.is_company_member(company_id));
 
+drop policy if exists "member brand profiles read" on public.company_brand_profiles;
+create policy "member brand profiles read"
+on public.company_brand_profiles
+for select
+to authenticated
+using (public.is_company_member(company_id));
+
+drop policy if exists "member brand profiles write" on public.company_brand_profiles;
+create policy "member brand profiles write"
+on public.company_brand_profiles
+for all
+to authenticated
+using (public.is_company_member(company_id))
+with check (public.is_company_member(company_id));
+
 comment on table public.companies is
   'Empresas/projetos do E-mail Lab com tema visual e nota opcional.';
 
@@ -459,6 +529,9 @@ comment on table public.email_templates is
 
 comment on table public.email_sections is
   'Secoes reutilizaveis de header e footer por empresa, com favorito para uso rapido e IA.';
+
+comment on table public.company_brand_profiles is
+  'Contexto de identidade visual por empresa para apoiar criacao manual e geracao com IA.';
 
 comment on table public.profiles is
   'Perfil basico do usuario autenticado no E-mail Lab.';

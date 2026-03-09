@@ -28,6 +28,7 @@ import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
 import { getCurrentSession, loadCurrentProfile, signInWithPassword, signOutCurrentUser, signUpWithPassword, subscribeToAuth } from './lib/auth-store'
 import { generateEmailMarkup } from './lib/ai'
+import { loadRemoteBrandProfiles, saveRemoteBrandProfile } from './lib/brand-profile-store'
 import { describeMarkup, inlineEmailDocument } from './lib/email'
 import { deleteRemoteSection, loadRemoteSections, saveRemoteSection } from './lib/section-store'
 import {
@@ -38,11 +39,13 @@ import {
   saveRemoteTemplate,
 } from './lib/template-store'
 import type { SectionKind, SectionRecord } from './types/section'
+import type { BrandProfileRecord } from './types/brand-profile'
 import type { ProfileRecord } from './types/profile'
 import type { TemplateRecord } from './types/template'
 
 type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections'
 type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
+type SectionView = SectionKind | 'identity'
 
 type DeviceConfig = {
   height: number
@@ -68,6 +71,16 @@ type SectionFormState = {
   kind: SectionKind
   markup: string
   name: string
+}
+
+type BrandProfileFormState = {
+  additionalContext: string
+  backgroundColor: string
+  exampleMarkup: string
+  logoUrl: string
+  primaryColor: string
+  secondaryColor: string
+  typography: string
 }
 
 const STORAGE_KEYS = ['email-lab/templates-v2', 'email-lab/templates'] as const
@@ -121,6 +134,32 @@ function createSectionForm(kind: SectionKind): SectionFormState {
     kind,
     markup: '',
     name: '',
+  }
+}
+
+function createBrandProfileForm(companyId: CompanyId): BrandProfileFormState {
+  const company = companies.find((item) => item.id === companyId) ?? FALLBACK_COMPANY
+
+  return {
+    additionalContext: company.note ?? '',
+    backgroundColor: company.theme.bg,
+    exampleMarkup: '',
+    logoUrl: '',
+    primaryColor: company.theme.primary,
+    secondaryColor: company.theme.primarySoft,
+    typography: 'Arial, Helvetica, sans-serif',
+  }
+}
+
+function mapBrandProfileToForm(profile: BrandProfileRecord): BrandProfileFormState {
+  return {
+    additionalContext: profile.additionalContext,
+    backgroundColor: profile.backgroundColor,
+    exampleMarkup: profile.exampleMarkup,
+    logoUrl: profile.logoUrl,
+    primaryColor: profile.primaryColor,
+    secondaryColor: profile.secondaryColor,
+    typography: profile.typography,
   }
 }
 
@@ -213,6 +252,7 @@ export function App() {
   const [initialTemplates] = useState<TemplateRecord[]>(() => loadLocalTemplates())
   const [templates, setTemplates] = useState<TemplateRecord[]>(initialTemplates)
   const [sections, setSections] = useState<SectionRecord[]>([])
+  const [brandProfiles, setBrandProfiles] = useState<BrandProfileRecord[]>([])
   const [categoryMap, setCategoryMap] = useState<Map<CompanyId, string[]>>(() =>
     buildCategoryMap([], initialTemplates),
   )
@@ -228,9 +268,10 @@ export function App() {
   const [draft, setDraft] = useState<TemplateRecord | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [createForm, setCreateForm] = useState<TemplateFormState>(createBlankForm)
-  const [sectionKind, setSectionKind] = useState<SectionKind>('header')
+  const [sectionView, setSectionView] = useState<SectionView>('header')
   const [sectionModalOpen, setSectionModalOpen] = useState(false)
   const [sectionForm, setSectionForm] = useState<SectionFormState>(() => createSectionForm('header'))
+  const [brandProfileForm, setBrandProfileForm] = useState<BrandProfileFormState>(() => createBrandProfileForm(DEFAULT_COMPANY_ID))
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null)
   const [companyPickerOpen, setCompanyPickerOpen] = useState(false)
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile')
@@ -248,6 +289,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [isHydrating, setIsHydrating] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isSavingBrandProfile, setIsSavingBrandProfile] = useState(false)
   const [inlinedDocument, setInlinedDocument] = useState('')
 
   const currentCompany = useMemo(
@@ -271,8 +313,18 @@ export function App() {
   )
 
   const companySections = useMemo(
-    () => sections.filter((section) => section.companyId === companyId && section.kind === sectionKind),
-    [companyId, sectionKind, sections],
+    () =>
+      sections.filter(
+        (section) =>
+          section.companyId === companyId &&
+          section.kind === (sectionView === 'identity' ? 'header' : sectionView),
+      ),
+    [companyId, sectionView, sections],
+  )
+
+  const currentBrandProfile = useMemo(
+    () => brandProfiles.find((profile) => profile.companyId === companyId) ?? null,
+    [brandProfiles, companyId],
   )
 
   const favoriteHeader = useMemo(
@@ -400,7 +452,11 @@ export function App() {
 
     async function hydrateWorkspace() {
       try {
-        const [remote, remoteSections] = await Promise.all([loadRemoteWorkspace(), loadRemoteSections()])
+        const [remote, remoteSections, remoteBrandProfiles] = await Promise.all([
+          loadRemoteWorkspace(),
+          loadRemoteSections(),
+          loadRemoteBrandProfiles(),
+        ])
         let nextTemplates = remote.templates
 
         if (remote.templates.length === 0 && initialTemplates.length > 0) {
@@ -417,6 +473,7 @@ export function App() {
         setTemplates(nextTemplates)
         setCategoryMap(buildCategoryMap(remote.categories, nextTemplates))
         setSections(remoteSections)
+        setBrandProfiles(remoteBrandProfiles)
       } catch {
         if (!cancelled) {
           setNotice('Supabase indisponivel. Mantendo os dados locais nesta sessao.')
@@ -434,6 +491,10 @@ export function App() {
       cancelled = true
     }
   }, [initialTemplates, session])
+
+  useEffect(() => {
+    setBrandProfileForm(currentBrandProfile ? mapBrandProfileToForm(currentBrandProfile) : createBrandProfileForm(companyId))
+  }, [companyId, currentBrandProfile])
 
   useEffect(() => {
     if ((view !== 'editor' && view !== 'preview') || !draft) {
@@ -520,6 +581,21 @@ export function App() {
     }
   }
 
+  const persistBrandProfile = async (profile: BrandProfileRecord) => {
+    setIsSavingBrandProfile(true)
+
+    try {
+      const saved = await saveRemoteBrandProfile(profile)
+      setBrandProfiles((current) => {
+        const next = current.filter((item) => item.companyId !== saved.companyId)
+        return [saved, ...next]
+      })
+      return saved
+    } finally {
+      setIsSavingBrandProfile(false)
+    }
+  }
+
   const handleSelectCompany = (nextCompanyId: CompanyId) => {
     if (nextCompanyId === companyId) {
       return
@@ -554,13 +630,37 @@ export function App() {
     })
   }
 
+  const handleSaveBrandProfile = async () => {
+    const timestamp = new Date().toISOString()
+    const nextProfile: BrandProfileRecord = {
+      additionalContext: brandProfileForm.additionalContext.trim(),
+      backgroundColor: brandProfileForm.backgroundColor.trim(),
+      companyId,
+      createdAt: currentBrandProfile?.createdAt ?? timestamp,
+      exampleMarkup: brandProfileForm.exampleMarkup,
+      id: currentBrandProfile?.id ?? crypto.randomUUID(),
+      logoUrl: brandProfileForm.logoUrl.trim(),
+      primaryColor: brandProfileForm.primaryColor.trim(),
+      secondaryColor: brandProfileForm.secondaryColor.trim(),
+      typography: brandProfileForm.typography.trim(),
+      updatedAt: timestamp,
+    }
+
+    try {
+      await persistBrandProfile(nextProfile)
+      setNotice('Identidade visual salva.')
+    } catch {
+      setNotice('Nao foi possivel salvar a identidade visual.')
+    }
+  }
+
   const handleOpenCreate = () => {
     setCreateForm(createBlankForm())
     setCreateModalOpen(true)
   }
 
   const handleOpenSectionModal = (kind: SectionKind, section?: SectionRecord) => {
-    setSectionKind(kind)
+    setSectionView(kind)
     setEditingSectionId(section?.id ?? null)
     setSectionForm(
       section
@@ -771,33 +871,6 @@ export function App() {
     }
   }
 
-  const handleCopyAiPrompt = async () => {
-    if (!draft) {
-      return
-    }
-
-    const selectedHeader = aiUseFavoriteHeader ? favoriteHeader : null
-    const selectedFooter = aiUseFavoriteFooter ? favoriteFooter : null
-    const prompt = [
-      `Empresa: ${currentCompany.name}`,
-      `Template: ${draft.name}`,
-      `Assunto: ${draft.subject}`,
-      `Categoria: ${draft.category}`,
-      `Objetivo do email: ${aiPrompt.trim() || 'Nao informado.'}`,
-      `Use header favorito: ${selectedHeader ? selectedHeader.name : 'nao'}`,
-      selectedHeader ? `Markup do header:\n${selectedHeader.markup}` : '',
-      `Use footer favorito: ${selectedFooter ? selectedFooter.name : 'nao'}`,
-      selectedFooter ? `Markup do footer:\n${selectedFooter.markup}` : '',
-      'Gere um email HTML completo, pronto para email marketing, com CSS inline-safe e mantendo header e footer como base.',
-    ]
-      .filter(Boolean)
-      .join('\n\n')
-
-    await navigator.clipboard.writeText(prompt)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1400)
-  }
-
   const handleOpenAiModal = () => {
     setAiError(null)
     setAiUseFavoriteHeader(Boolean(favoriteHeader))
@@ -821,6 +894,7 @@ export function App() {
     try {
       const markup = await generateEmailMarkup({
         brief: aiPrompt.trim(),
+        brandProfile: currentBrandProfile,
         category: draft.category,
         companyName: currentCompany.name,
         favoriteFooter: aiUseFavoriteFooter ? favoriteFooter : null,
@@ -1117,34 +1191,138 @@ export function App() {
                   <p>{currentCompany.name}</p>
                 </div>
 
-                <button className="primary-button" onClick={() => handleOpenSectionModal(sectionKind)} type="button">
+                {sectionView !== 'identity' && <button className="primary-button" onClick={() => handleOpenSectionModal(sectionView)} type="button">
                   <Plus size={16} />
                   Nova seção
-                </button>
+                </button>}
               </header>
 
               <div className="section-tabs">
                 <button
-                  className={sectionKind === 'header' ? 'is-active' : ''}
-                  onClick={() => setSectionKind('header')}
+                  className={sectionView === 'header' ? 'is-active' : ''}
+                  onClick={() => setSectionView('header')}
                   type="button"
                 >
                   Header
                 </button>
                 <button
-                  className={sectionKind === 'footer' ? 'is-active' : ''}
-                  onClick={() => setSectionKind('footer')}
+                  className={sectionView === 'footer' ? 'is-active' : ''}
+                  onClick={() => setSectionView('footer')}
                   type="button"
                 >
                   Footer
                 </button>
+                <button
+                  className={sectionView === 'identity' ? 'is-active' : ''}
+                  onClick={() => setSectionView('identity')}
+                  type="button"
+                >
+                  Identidade visual
+                </button>
               </div>
 
-              {companySections.length === 0 ? (
+              {sectionView === 'identity' ? (
+                <section className="details-page__panel">
+                  <div className="details-panel">
+                    <div className="details-panel__header">
+                      <div>
+                        <h3>Contexto da marca</h3>
+                        <p>Esses dados alimentam a IA e ajudam a manter consistÃªncia visual da empresa.</p>
+                      </div>
+                      <button
+                        className="primary-button"
+                        disabled={isSavingBrandProfile}
+                        onClick={handleSaveBrandProfile}
+                        type="button"
+                      >
+                        <Save size={16} />
+                        {isSavingBrandProfile ? 'Salvando' : 'Salvar identidade'}
+                      </button>
+                    </div>
+
+                    <div className="brand-grid">
+                      <label className="field">
+                        <span>Link da logo</span>
+                        <input
+                          onChange={(event) => setBrandProfileForm((current) => ({ ...current, logoUrl: event.target.value }))}
+                          placeholder="https://..."
+                          value={brandProfileForm.logoUrl}
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span>Tipografia</span>
+                        <input
+                          onChange={(event) => setBrandProfileForm((current) => ({ ...current, typography: event.target.value }))}
+                          placeholder="Arial, Helvetica, sans-serif"
+                          value={brandProfileForm.typography}
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span>Cor primÃ¡ria</span>
+                        <input
+                          onChange={(event) =>
+                            setBrandProfileForm((current) => ({ ...current, primaryColor: event.target.value }))
+                          }
+                          placeholder="#000000"
+                          value={brandProfileForm.primaryColor}
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span>Cor secundÃ¡ria</span>
+                        <input
+                          onChange={(event) =>
+                            setBrandProfileForm((current) => ({ ...current, secondaryColor: event.target.value }))
+                          }
+                          placeholder="#ffffff"
+                          value={brandProfileForm.secondaryColor}
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span>Background</span>
+                        <input
+                          onChange={(event) =>
+                            setBrandProfileForm((current) => ({ ...current, backgroundColor: event.target.value }))
+                          }
+                          placeholder="#f5f5f5"
+                          value={brandProfileForm.backgroundColor}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="field">
+                      <span>Diretrizes extras</span>
+                      <textarea
+                        className="section-textarea"
+                        onChange={(event) =>
+                          setBrandProfileForm((current) => ({ ...current, additionalContext: event.target.value }))
+                        }
+                        placeholder="Tom de voz, regras de layout, estilo de botÃ£o, uso de imagens, restriÃ§Ãµes etc."
+                        value={brandProfileForm.additionalContext}
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span>Exemplo de email</span>
+                      <textarea
+                        className="section-textarea"
+                        onChange={(event) =>
+                          setBrandProfileForm((current) => ({ ...current, exampleMarkup: event.target.value }))
+                        }
+                        placeholder="Cole um HTML de exemplo para servir de referÃªncia Ã  IA."
+                        value={brandProfileForm.exampleMarkup}
+                      />
+                    </label>
+                  </div>
+                </section>
+              ) : companySections.length === 0 ? (
                 <section className="empty-card">
                   <FolderOpen size={30} />
                   <h3>Nenhuma secao cadastrada</h3>
-                  <p>Crie {sectionKind === 'header' ? 'headers' : 'footers'} reutilizaveis para acelerar os emails.</p>
+                  <p>Crie {sectionView === 'header' ? 'headers' : 'footers'} reutilizaveis para acelerar os emails.</p>
                 </section>
               ) : (
                 <section className="table-card">
@@ -1569,43 +1747,37 @@ export function App() {
                 <textarea className="section-textarea" onChange={(event) => setAiPrompt(event.target.value)} value={aiPrompt} />
               </label>
 
-              <div className="ai-summary">
-                <div>
-                  <span>Header favorito</span>
-                  <strong>{favoriteHeader?.name ?? 'Nenhum definido'}</strong>
-                </div>
-                <div>
-                  <span>Footer favorito</span>
-                  <strong>{favoriteFooter?.name ?? 'Nenhum definido'}</strong>
-                </div>
-              </div>
-
-              <div className="ai-summary">
-                <label className="field field--checkbox field--checkbox-card">
+              <div className="ai-options">
+                <label className="ai-option">
                   <input
                     checked={aiUseFavoriteHeader}
                     disabled={!favoriteHeader}
                     onChange={(event) => setAiUseFavoriteHeader(event.target.checked)}
                     type="checkbox"
                   />
-                  <span>
+                  <div>
                     <strong>Usar header favorito</strong>
-                    <small>{favoriteHeader?.name ?? 'Nenhum header favorito nesta empresa.'}</small>
-                  </span>
+                    <small className="ai-option__detail">{favoriteHeader?.name ?? 'Nenhum header favorito nesta empresa.'}</small>
+                  </div>
                 </label>
 
-                <label className="field field--checkbox field--checkbox-card">
+                <label className="ai-option">
                   <input
                     checked={aiUseFavoriteFooter}
                     disabled={!favoriteFooter}
                     onChange={(event) => setAiUseFavoriteFooter(event.target.checked)}
                     type="checkbox"
                   />
-                  <span>
+                  <div>
                     <strong>Usar footer favorito</strong>
-                    <small>{favoriteFooter?.name ?? 'Nenhum footer favorito nesta empresa.'}</small>
-                  </span>
+                    <small className="ai-option__detail">{favoriteFooter?.name ?? 'Nenhum footer favorito nesta empresa.'}</small>
+                  </div>
                 </label>
+              </div>
+
+              <div className="ai-brand-note">
+                <span>Identidade visual</span>
+                <strong>{currentBrandProfile ? 'Contexto salvo e ativo para esta empresa.' : 'Sem contexto salvo; a IA usarÃ¡ apenas o tema base da empresa.'}</strong>
               </div>
 
               {aiError && <div className="auth-card__error">{aiError}</div>}
@@ -1614,10 +1786,6 @@ export function App() {
             <footer className="modal-card__actions">
               <button className="secondary-button" onClick={() => setAiModalOpen(false)} type="button">
                 Fechar
-              </button>
-              <button className="primary-button" onClick={handleCopyAiPrompt} type="button">
-                <Copy size={16} />
-                {copied ? 'Prompt copiado' : 'Copiar prompt'}
               </button>
               <button className="primary-button" disabled={aiGenerating} onClick={handleGenerateWithAi} type="button">
                 <Sparkles size={16} />

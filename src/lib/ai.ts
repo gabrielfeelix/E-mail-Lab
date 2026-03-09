@@ -1,7 +1,9 @@
+import type { BrandProfileRecord } from '../types/brand-profile'
 import type { SectionRecord } from '../types/section'
 
 type GenerateEmailMarkupInput = {
   brief: string
+  brandProfile: BrandProfileRecord | null
   category: string
   companyName: string
   favoriteFooter: SectionRecord | null
@@ -18,7 +20,7 @@ type GenerateEmailMarkupResponse = {
 }
 
 const browserGeminiKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim()
-const browserGeminiModel = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-flash-lite').trim()
+const browserGeminiModel = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-3-flash-preview').trim()
 
 function buildPrompt(input: GenerateEmailMarkupInput) {
   const sections = [
@@ -47,6 +49,24 @@ function buildPrompt(input: GenerateEmailMarkupInput) {
       'Se header e footer foram enviados, mantenha esses blocos como base do resultado.',
     ].join(' '),
   )
+
+  if (input.brandProfile) {
+    sections.push(
+      [
+        `Identidade visual da marca:`,
+        `Logo: ${input.brandProfile.logoUrl || 'nao informada'}`,
+        `Cor primaria: ${input.brandProfile.primaryColor || 'nao informada'}`,
+        `Cor secundaria: ${input.brandProfile.secondaryColor || 'nao informada'}`,
+        `Background: ${input.brandProfile.backgroundColor || 'nao informado'}`,
+        `Tipografia: ${input.brandProfile.typography || 'nao informada'}`,
+        `Diretrizes: ${input.brandProfile.additionalContext || 'nenhuma adicional'}`,
+      ].join('\n'),
+    )
+
+    if (input.brandProfile.exampleMarkup.trim()) {
+      sections.push(`Exemplo de email da marca:\n${input.brandProfile.exampleMarkup}`)
+    }
+  }
 
   return sections.join('\n\n')
 }

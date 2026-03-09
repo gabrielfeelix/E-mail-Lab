@@ -26,6 +26,24 @@ function buildPrompt(body) {
     sections.push(`Footer base para usar e preservar:\n${body.favoriteFooter.markup}`)
   }
 
+  if (body.brandProfile) {
+    sections.push(
+      [
+        'Identidade visual da marca:',
+        `Logo: ${body.brandProfile.logoUrl || 'nao informada'}`,
+        `Cor primaria: ${body.brandProfile.primaryColor || 'nao informada'}`,
+        `Cor secundaria: ${body.brandProfile.secondaryColor || 'nao informada'}`,
+        `Background: ${body.brandProfile.backgroundColor || 'nao informado'}`,
+        `Tipografia: ${body.brandProfile.typography || 'nao informada'}`,
+        `Diretrizes: ${body.brandProfile.additionalContext || 'nenhuma adicional'}`,
+      ].join('\n'),
+    )
+
+    if (String(body.brandProfile.exampleMarkup || '').trim()) {
+      sections.push(`Exemplo de email da marca:\n${body.brandProfile.exampleMarkup}`)
+    }
+  }
+
   sections.push(
     [
       'Gere um email HTML completo em pt-BR para uso real em email marketing.',
@@ -46,8 +64,18 @@ export default async function handler(req, res) {
     return
   }
 
-  const apiKey = String(process.env.GEMINI_API_KEY || '').trim()
-  const model = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite').trim()
+  const apiKey = String(
+    process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.VITE_GEMINI_API_KEY ||
+      '',
+  ).trim()
+  const model = String(
+    process.env.GEMINI_MODEL ||
+      process.env.GOOGLE_MODEL ||
+      process.env.VITE_GEMINI_MODEL ||
+      'gemini-3-flash-preview',
+  ).trim()
 
   if (!apiKey) {
     res.status(500).json({ ok: false, message: 'GEMINI_API_KEY nao configurada no servidor.' })
