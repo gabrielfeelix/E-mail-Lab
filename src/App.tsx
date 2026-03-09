@@ -66,7 +66,7 @@ const devices = {
   desktop: {
     height: 920,
     icon: Monitor,
-    label: 'Desktop',
+    label: 'Notebook',
     width: 1280,
   },
   mobile: {
@@ -181,7 +181,8 @@ export function App() {
   const [draft, setDraft] = useState<TemplateRecord | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [createForm, setCreateForm] = useState<TemplateFormState>(createBlankForm)
-  const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop')
+  const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile')
+  const [desktopPreviewOpen, setDesktopPreviewOpen] = useState(false)
   const [duplicateState, setDuplicateState] = useState<DuplicateState | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TemplateRecord | null>(null)
   const [copied, setCopied] = useState(false)
@@ -376,7 +377,8 @@ export function App() {
       setView('templates')
       setDraft(null)
       setActiveTemplateId(null)
-      setPreviewDevice('desktop')
+      setPreviewDevice('mobile')
+      setDesktopPreviewOpen(false)
     })
   }
 
@@ -385,7 +387,8 @@ export function App() {
       setView('templates')
       setDraft(null)
       setActiveTemplateId(null)
-      setPreviewDevice('desktop')
+      setPreviewDevice('mobile')
+      setDesktopPreviewOpen(false)
     })
   }
 
@@ -427,7 +430,8 @@ export function App() {
       setDraft({ ...template })
       setActiveTemplateId(template.id)
       setView('preview')
-      setPreviewDevice('desktop')
+      setPreviewDevice('mobile')
+      setDesktopPreviewOpen(false)
     })
   }
 
@@ -540,6 +544,15 @@ export function App() {
   const currentDevice = devices[previewDevice]
   const senderAddress = `no-reply@${currentCompany.id}.com`
   const sentAtLabel = draft ? dateFormatter.format(new Date(draft.updatedAt)) : dateFormatter.format(new Date())
+  const handlePreviewDeviceChange = (deviceId: PreviewDevice) => {
+    if (deviceId === 'desktop') {
+      setDesktopPreviewOpen(true)
+      return
+    }
+
+    setDesktopPreviewOpen(false)
+    setPreviewDevice(deviceId)
+  }
 
   return (
     <main className="shell" style={companyThemeStyle(currentCompany.theme)}>
@@ -822,10 +835,14 @@ export function App() {
                         return (
                           <button
                             aria-label={device.label}
-                            aria-selected={previewDevice === deviceId}
-                            className={previewDevice === deviceId ? 'is-active' : ''}
+                            aria-selected={deviceId === 'desktop' ? desktopPreviewOpen : previewDevice === deviceId}
+                            className={
+                              (deviceId === 'desktop' ? desktopPreviewOpen : previewDevice === deviceId)
+                                ? 'is-active'
+                                : ''
+                            }
                             key={deviceId}
-                            onClick={() => setPreviewDevice(deviceId)}
+                            onClick={() => handlePreviewDeviceChange(deviceId)}
                             role="tab"
                             title={device.label}
                             type="button"
@@ -840,6 +857,7 @@ export function App() {
 
                 <div style={{ padding: '24px' }}>
                   <GmailPreview
+                    mode={previewDevice}
                     senderAddress={senderAddress}
                     senderName={currentCompany.name}
                     sentAtLabel={sentAtLabel}
@@ -873,7 +891,7 @@ export function App() {
                         Code Editor
                       </button>
                     </div>
-                    <p>Edite o HTML completo na esquerda. O preview simula um contexto de leitura de Gmail.</p>
+                    <p className="editor-column__intro">HTML completo a esquerda. Preview Gmail a direita.</p>
                   </div>
 
                   <div className="editor-column__surface">
@@ -916,10 +934,14 @@ export function App() {
                         return (
                           <button
                             aria-label={device.label}
-                            aria-selected={previewDevice === deviceId}
-                            className={previewDevice === deviceId ? 'is-active' : ''}
+                            aria-selected={deviceId === 'desktop' ? desktopPreviewOpen : previewDevice === deviceId}
+                            className={
+                              (deviceId === 'desktop' ? desktopPreviewOpen : previewDevice === deviceId)
+                                ? 'is-active'
+                                : ''
+                            }
                             key={deviceId}
-                            onClick={() => setPreviewDevice(deviceId)}
+                            onClick={() => handlePreviewDeviceChange(deviceId)}
                             role="tab"
                             title={device.label}
                             type="button"
@@ -932,6 +954,7 @@ export function App() {
                   </div>
 
                   <GmailPreview
+                    mode={previewDevice}
                     senderAddress={senderAddress}
                     senderName={currentCompany.name}
                     sentAtLabel={sentAtLabel}
@@ -1029,6 +1052,35 @@ export function App() {
                 Continue
               </button>
             </footer>
+          </section>
+        </div>
+      )}
+
+      {desktopPreviewOpen && draft && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card modal-card--preview" role="dialog">
+            <header className="modal-card__header">
+              <div>
+                <h3>Preview Notebook</h3>
+                <p>Shell completa do Gmail para validar a leitura em tela ampla.</p>
+              </div>
+              <button aria-label="Fechar" className="icon-button" onClick={() => setDesktopPreviewOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__preview">
+              <GmailPreview
+                mode="desktop"
+                senderAddress={senderAddress}
+                senderName={currentCompany.name}
+                sentAtLabel={sentAtLabel}
+                srcDoc={inlinedDocument}
+                subject={draft.subject}
+                viewportHeight={devices.desktop.height}
+                viewportWidth={devices.desktop.width}
+              />
+            </div>
           </section>
         </div>
       )}

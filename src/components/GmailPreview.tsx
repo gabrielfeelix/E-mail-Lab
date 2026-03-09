@@ -6,11 +6,13 @@ import {
   MoreVertical,
   Reply,
   ShieldAlert,
+  Sparkles,
   Star,
   Trash2,
 } from 'lucide-react'
 
 type GmailPreviewProps = {
+  mode: 'desktop' | 'mobile' | 'tablet'
   senderAddress: string
   senderName: string
   sentAtLabel: string
@@ -20,15 +22,11 @@ type GmailPreviewProps = {
   viewportWidth: number
 }
 
-export function GmailPreview({
-  senderAddress,
-  senderName,
-  sentAtLabel,
+function PreviewCanvas({
   srcDoc,
-  subject,
   viewportHeight,
   viewportWidth,
-}: GmailPreviewProps) {
+}: Pick<GmailPreviewProps, 'srcDoc' | 'viewportHeight' | 'viewportWidth'>) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [scale, setScale] = useState(1)
 
@@ -46,17 +44,43 @@ export function GmailPreview({
         return
       }
 
-      const availableWidth = entry.contentRect.width - 48
+      const availableWidth = Math.max(entry.contentRect.width - 24, 220)
       setScale(Math.min(1, availableWidth / viewportWidth))
     })
 
     observer.observe(node)
-
     return () => observer.disconnect()
   }, [viewportWidth])
 
   return (
-    <section className="gmail-preview">
+    <div className="gmail-preview__message" ref={hostRef}>
+      <div
+        className="gmail-preview__canvas"
+        style={{
+          height: viewportHeight * scale,
+        }}
+      >
+        <iframe
+          className="gmail-preview__iframe"
+          sandbox=""
+          srcDoc={srcDoc}
+          style={{
+            height: viewportHeight,
+            transform: `scale(${scale})`,
+            width: viewportWidth,
+          }}
+          title="Gmail preview"
+        />
+      </div>
+    </div>
+  )
+}
+
+function DesktopShell(props: Omit<GmailPreviewProps, 'mode'>) {
+  const { senderAddress, senderName, sentAtLabel, srcDoc, subject, viewportHeight, viewportWidth } = props
+
+  return (
+    <section className="gmail-preview gmail-preview--desktop">
       <header className="gmail-preview__chrome">
         <div className="gmail-preview__brand">
           <span className="gmail-preview__logo">M</span>
@@ -74,9 +98,7 @@ export function GmailPreview({
           <button className="gmail-preview__compose" type="button">
             Escrever
           </button>
-          <div className="gmail-preview__folder gmail-preview__folder--active">
-            Caixa de entrada
-          </div>
+          <div className="gmail-preview__folder gmail-preview__folder--active">Caixa de entrada</div>
           <div className="gmail-preview__folder">Com estrela</div>
           <div className="gmail-preview__folder">Adiados</div>
           <div className="gmail-preview__folder">Compras</div>
@@ -110,28 +132,68 @@ export function GmailPreview({
             </div>
           </div>
 
-          <div className="gmail-preview__message" ref={hostRef}>
-            <div
-              className="gmail-preview__canvas"
-              style={{
-                height: viewportHeight * scale,
-              }}
-            >
-              <iframe
-                className="gmail-preview__iframe"
-                sandbox=""
-                srcDoc={srcDoc}
-                style={{
-                  height: viewportHeight,
-                  transform: `scale(${scale})`,
-                  width: viewportWidth,
-                }}
-                title="Gmail preview"
-              />
-            </div>
-          </div>
+          <PreviewCanvas srcDoc={srcDoc} viewportHeight={viewportHeight} viewportWidth={viewportWidth} />
         </section>
       </div>
     </section>
   )
+}
+
+function MobileShell(props: Omit<GmailPreviewProps, 'mode'> & { compact?: boolean }) {
+  const { compact = false, senderAddress, senderName, sentAtLabel, srcDoc, subject, viewportHeight, viewportWidth } = props
+
+  return (
+    <section className={`gmail-preview gmail-preview--mobile ${compact ? 'gmail-preview--tablet' : ''}`.trim()}>
+      <div className="gmail-mobile__statusbar">
+        <span>13:08</span>
+        <span className="gmail-mobile__statusicons">Wi-Fi 68</span>
+      </div>
+
+      <div className="gmail-mobile__toolbar">
+        <ArrowLeft size={20} />
+        <div className="gmail-mobile__toolbar-actions">
+          <Sparkles size={18} />
+          <Archive size={18} />
+          <Trash2 size={18} />
+          <ShieldAlert size={18} />
+          <MoreVertical size={18} />
+        </div>
+      </div>
+
+      <div className="gmail-mobile__subject">
+        <h4>{subject || 'Sem assunto'}</h4>
+        <div className="gmail-mobile__subject-row">
+          <span className="gmail-preview__chip gmail-preview__chip--mobile">Caixa de entrada</span>
+          <Star size={18} />
+        </div>
+      </div>
+
+      <section className="gmail-mobile__mail">
+        <div className="gmail-mobile__meta">
+          <div className="gmail-mobile__avatar">{senderName.slice(0, 1)}</div>
+          <div className="gmail-mobile__sender">
+            <strong>{senderName}</strong>
+            <span>{senderAddress}</span>
+          </div>
+          <div className="gmail-mobile__meta-side">
+            <span>{sentAtLabel}</span>
+            <div className="gmail-mobile__meta-icons">
+              <Reply size={18} />
+              <MoreVertical size={18} />
+            </div>
+          </div>
+        </div>
+
+        <PreviewCanvas srcDoc={srcDoc} viewportHeight={viewportHeight} viewportWidth={viewportWidth} />
+      </section>
+    </section>
+  )
+}
+
+export function GmailPreview(props: GmailPreviewProps) {
+  if (props.mode === 'desktop') {
+    return <DesktopShell {...props} />
+  }
+
+  return <MobileShell {...props} compact={props.mode === 'tablet'} />
 }
