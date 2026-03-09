@@ -19,10 +19,6 @@ function mapProfile(row: ProfileRow): ProfileRecord {
 export async function getCurrentSession() {
   const client = getSupabaseBrowserClient()
 
-  if (!client) {
-    return null
-  }
-
   const result = await client.auth.getSession()
   if (result.error) {
     throw result.error
@@ -34,10 +30,6 @@ export async function getCurrentSession() {
 export function subscribeToAuth(callback: (session: Session | null) => void): Subscription | null {
   const client = getSupabaseBrowserClient()
 
-  if (!client) {
-    return null
-  }
-
   const { data } = client.auth.onAuthStateChange((_event, session) => {
     callback(session)
   })
@@ -47,10 +39,6 @@ export function subscribeToAuth(callback: (session: Session | null) => void): Su
 
 export async function signInWithPassword(email: string, password: string) {
   const client = getSupabaseBrowserClient()
-
-  if (!client) {
-    throw new Error('Supabase indisponivel')
-  }
 
   const result = await client.auth.signInWithPassword({
     email,
@@ -66,10 +54,6 @@ export async function signInWithPassword(email: string, password: string) {
 
 export async function signUpWithPassword(email: string, password: string, fullName: string) {
   const client = getSupabaseBrowserClient()
-
-  if (!client) {
-    throw new Error('Supabase indisponivel')
-  }
 
   const result = await client.auth.signUp({
     email,
@@ -91,10 +75,6 @@ export async function signUpWithPassword(email: string, password: string, fullNa
 export async function signOutCurrentUser() {
   const client = getSupabaseBrowserClient()
 
-  if (!client) {
-    return
-  }
-
   const result = await client.auth.signOut()
   if (result.error) {
     throw result.error
@@ -103,10 +83,6 @@ export async function signOutCurrentUser() {
 
 export async function loadCurrentProfile(userId: string) {
   const client = getSupabaseBrowserClient()
-
-  if (!client) {
-    return null
-  }
 
   const result = await client.from('profiles').select('id, email, full_name').eq('id', userId).maybeSingle()
   if (result.error) {

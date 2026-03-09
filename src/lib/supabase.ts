@@ -17,14 +17,11 @@ export function hasSupabaseConfig() {
 }
 
 export function getSupabaseBrowserClient() {
-  if (!hasSupabaseConfig()) {
-    return null
-  }
-
   if (!browserClient) {
     browserClient = createClient(supabaseUrl, supabasePublishableKey, {
       auth: {
         autoRefreshToken: true,
+        detectSessionInUrl: true,
         persistSession: true,
       },
     })
