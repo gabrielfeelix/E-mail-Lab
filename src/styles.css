@@ -866,7 +866,7 @@ button {
   display: grid;
   gap: 0;
   margin: 0 16px 16px;
-  overflow: hidden;
+  overflow-x: hidden;
   border: 1px solid var(--border);
   border-radius: 22px;
 }
@@ -978,7 +978,7 @@ button {
 .gmail-preview__mail {
   display: grid;
   gap: 0;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid rgba(255, 255, 255, 0.58);
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.78);
@@ -1051,7 +1051,7 @@ button {
 
 .gmail-preview__canvas {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   max-width: 100%;
 }
 
