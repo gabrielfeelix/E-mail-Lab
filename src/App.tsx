@@ -27,6 +27,7 @@ import { CategoryField } from './components/CategoryField'
 import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
 import { getCurrentSession, loadCurrentProfile, signInWithPassword, signOutCurrentUser, signUpWithPassword, subscribeToAuth } from './lib/auth-store'
+import { generateEmailMarkup } from './lib/ai'
 import { describeMarkup, inlineEmailDocument } from './lib/email'
 import { deleteRemoteSection, loadRemoteSections, saveRemoteSection } from './lib/section-store'
 import {
@@ -239,6 +240,10 @@ export function App() {
   const [sectionDeleteTarget, setSectionDeleteTarget] = useState<SectionRecord | null>(null)
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiUseFavoriteHeader, setAiUseFavoriteHeader] = useState(false)
+  const [aiUseFavoriteFooter, setAiUseFavoriteFooter] = useState(false)
   const [copied, setCopied] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [isHydrating, setIsHydrating] = useState(true)
@@ -767,13 +772,22 @@ export function App() {
   }
 
   const handleCopyAiPrompt = async () => {
+    if (!draft) {
+      return
+    }
+
+    const selectedHeader = aiUseFavoriteHeader ? favoriteHeader : null
+    const selectedFooter = aiUseFavoriteFooter ? favoriteFooter : null
     const prompt = [
       `Empresa: ${currentCompany.name}`,
+      `Template: ${draft.name}`,
+      `Assunto: ${draft.subject}`,
+      `Categoria: ${draft.category}`,
       `Objetivo do email: ${aiPrompt.trim() || 'Nao informado.'}`,
-      `Use header favorito: ${favoriteHeader ? favoriteHeader.name : 'nao'}`,
-      favoriteHeader ? `Markup do header:\n${favoriteHeader.markup}` : '',
-      `Use footer favorito: ${favoriteFooter ? favoriteFooter.name : 'nao'}`,
-      favoriteFooter ? `Markup do footer:\n${favoriteFooter.markup}` : '',
+      `Use header favorito: ${selectedHeader ? selectedHeader.name : 'nao'}`,
+      selectedHeader ? `Markup do header:\n${selectedHeader.markup}` : '',
+      `Use footer favorito: ${selectedFooter ? selectedFooter.name : 'nao'}`,
+      selectedFooter ? `Markup do footer:\n${selectedFooter.markup}` : '',
       'Gere um email HTML completo, pronto para email marketing, com CSS inline-safe e mantendo header e footer como base.',
     ]
       .filter(Boolean)
@@ -782,6 +796,47 @@ export function App() {
     await navigator.clipboard.writeText(prompt)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1400)
+  }
+
+  const handleOpenAiModal = () => {
+    setAiError(null)
+    setAiUseFavoriteHeader(Boolean(favoriteHeader))
+    setAiUseFavoriteFooter(Boolean(favoriteFooter))
+    setAiModalOpen(true)
+  }
+
+  const handleGenerateWithAi = async () => {
+    if (!draft) {
+      return
+    }
+
+    if (!aiPrompt.trim()) {
+      setAiError('Descreva o email que a IA deve criar.')
+      return
+    }
+
+    setAiGenerating(true)
+    setAiError(null)
+
+    try {
+      const markup = await generateEmailMarkup({
+        brief: aiPrompt.trim(),
+        category: draft.category,
+        companyName: currentCompany.name,
+        favoriteFooter: aiUseFavoriteFooter ? favoriteFooter : null,
+        favoriteHeader: aiUseFavoriteHeader ? favoriteHeader : null,
+        subject: draft.subject,
+        templateName: draft.name,
+      })
+
+      setDraft((current) => (current ? { ...current, markup } : current))
+      setAiModalOpen(false)
+      setNotice('Markup gerado com Gemini. Revise antes de salvar.')
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'Nao foi possivel gerar o template com IA.')
+    } finally {
+      setAiGenerating(false)
+    }
   }
 
   const handleCopyMarkup = async () => {
@@ -1218,7 +1273,7 @@ export function App() {
                       <button className="is-active" type="button">
                         Code Editor
                       </button>
-                      <button onClick={() => setAiModalOpen(true)} type="button">
+                      <button onClick={handleOpenAiModal} type="button">
                         <Sparkles size={14} />
                         Criar com IA
                       </button>
@@ -1501,7 +1556,7 @@ export function App() {
             <header className="modal-card__header">
               <div>
                 <h3>Criar com IA</h3>
-                <p>Preparacao do prompt para o Gemini usando header e footer favoritos.</p>
+                <p>Descreva o email e gere o HTML usando Gemini com base opcional de header e footer.</p>
               </div>
               <button aria-label="Fechar" className="icon-button" onClick={() => setAiModalOpen(false)} type="button">
                 <X size={16} />
@@ -1524,6 +1579,36 @@ export function App() {
                   <strong>{favoriteFooter?.name ?? 'Nenhum definido'}</strong>
                 </div>
               </div>
+
+              <div className="ai-summary">
+                <label className="field field--checkbox field--checkbox-card">
+                  <input
+                    checked={aiUseFavoriteHeader}
+                    disabled={!favoriteHeader}
+                    onChange={(event) => setAiUseFavoriteHeader(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>Usar header favorito</strong>
+                    <small>{favoriteHeader?.name ?? 'Nenhum header favorito nesta empresa.'}</small>
+                  </span>
+                </label>
+
+                <label className="field field--checkbox field--checkbox-card">
+                  <input
+                    checked={aiUseFavoriteFooter}
+                    disabled={!favoriteFooter}
+                    onChange={(event) => setAiUseFavoriteFooter(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>Usar footer favorito</strong>
+                    <small>{favoriteFooter?.name ?? 'Nenhum footer favorito nesta empresa.'}</small>
+                  </span>
+                </label>
+              </div>
+
+              {aiError && <div className="auth-card__error">{aiError}</div>}
             </div>
 
             <footer className="modal-card__actions">
@@ -1533,6 +1618,10 @@ export function App() {
               <button className="primary-button" onClick={handleCopyAiPrompt} type="button">
                 <Copy size={16} />
                 {copied ? 'Prompt copiado' : 'Copiar prompt'}
+              </button>
+              <button className="primary-button" disabled={aiGenerating} onClick={handleGenerateWithAi} type="button">
+                <Sparkles size={16} />
+                {aiGenerating ? 'Gerando...' : 'Gerar HTML'}
               </button>
             </footer>
           </section>
