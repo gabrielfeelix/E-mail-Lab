@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState, startTransition } from 'react'
 import {
-  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Eye,
   FilePenLine,
@@ -11,6 +12,9 @@ import {
   Save,
   Smartphone,
   TabletSmartphone,
+  Trash2,
+  UserRound,
+  X,
 } from 'lucide-react'
 import { CategoryField } from './components/CategoryField'
 import { PreviewFrame } from './components/PreviewFrame'
@@ -22,7 +26,6 @@ import {
   describeMarkup,
   inlineEmailDocument,
 } from './lib/email'
-import { hasSupabaseConfig } from './lib/supabase'
 import type { TemplateRecord } from './types/template'
 
 type StoredTemplateCandidate = Partial<TemplateRecord> & {
@@ -30,7 +33,7 @@ type StoredTemplateCandidate = Partial<TemplateRecord> & {
   html?: string
 }
 
-type AppView = 'templates' | 'create' | 'details' | 'editor'
+type AppView = 'templates' | 'details' | 'editor' | 'preview'
 type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
 
 type DeviceConfig = {
@@ -40,6 +43,11 @@ type DeviceConfig = {
   label: string
   title: string
   width: number
+}
+
+type DuplicateState = {
+  name: string
+  template: TemplateRecord
 }
 
 const STORAGE_KEYS = ['email-lab/templates-v2', 'email-lab/templates'] as const
@@ -55,15 +63,15 @@ const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
 
 const devices = {
   desktop: {
-    description: 'Preview amplo no mesmo padrao de alternancia por dispositivo usado no Mailtrap.',
-    height: 920,
+    description: 'Preview desktop para validar a largura principal do email.',
+    height: 900,
     icon: Monitor,
     label: 'Desktop',
     title: 'Desktop',
     width: 1280,
   },
   mobile: {
-    description: 'Viewport compacto para validar leitura em tela pequena.',
+    description: 'Preview mobile para validar quebra, respiro e hierarquia.',
     height: 760,
     icon: Smartphone,
     label: 'Mobile',
@@ -71,7 +79,7 @@ const devices = {
     width: 390,
   },
   tablet: {
-    description: 'Faixa intermediaria para webviews e tablets.',
+    description: 'Preview intermediario para webviews e tablets.',
     height: 860,
     icon: TabletSmartphone,
     label: 'Tablet',
@@ -84,6 +92,21 @@ const deviceEntries = Object.entries(devices) as Array<[PreviewDevice, DeviceCon
 
 function isCompanyId(value: string): value is CompanyId {
   return companies.some((company) => company.id === value)
+}
+
+function createDraft(companyId: CompanyId): TemplateRecord {
+  const timestamp = new Date().toISOString()
+
+  return {
+    category: '',
+    companyId,
+    createdAt: timestamp,
+    id: crypto.randomUUID(),
+    markup: sampleMarkup,
+    name: '',
+    subject: '',
+    updatedAt: timestamp,
+  }
 }
 
 function normalizeTemplate(record: StoredTemplateCandidate): TemplateRecord {
@@ -157,30 +180,29 @@ function getUniqueCategories(companyId: CompanyId, templates: TemplateRecord[]) 
   return [...new Set([...base, ...current])]
 }
 
-function createBlankForm() {
-  return {
-    category: '',
-    name: '',
-    subject: '',
-  }
+function buildDuplicateName(name: string) {
+  return `${name} copy`
 }
 
 export function App() {
   const [templates, setTemplates] = useState<TemplateRecord[]>(() => loadTemplates())
   const [companyId, setCompanyId] = useState<CompanyId>(() => loadSelectedCompany())
   const [view, setView] = useState<AppView>('templates')
-  const [createForm, setCreateForm] = useState(createBlankForm)
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
   const [draft, setDraft] = useState<TemplateRecord | null>(null)
+  const [isCreatingNew, setIsCreatingNew] = useState(false)
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop')
-  const [copied, setCopied] = useState(false)
-  const [inlinedDocument, setInlinedDocument] = useState(() => buildEmailDocument(sampleMarkup))
+  const [duplicateState, setDuplicateState] = useState<DuplicateState | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<TemplateRecord | null>(null)
+  const [inlinedDocument, setInlinedDocument] = useState(() => ({
+    document: buildEmailDocument(sampleMarkup),
+    markup: sampleMarkup,
+  }))
 
   const currentCompany = useMemo(
     () => companies.find((company) => company.id === companyId) ?? FALLBACK_COMPANY,
     [companyId],
   )
-  const supabaseReady = hasSupabaseConfig()
 
   const sortedTemplates = useMemo(
     () =>
@@ -207,25 +229,33 @@ export function App() {
 
   const deferredMarkup = useDeferredValue(draft?.markup ?? sampleMarkup)
   const markupStats = describeMarkup(deferredMarkup)
-  const fallbackDocument = useMemo(() => buildEmailDocument(deferredMarkup), [deferredMarkup])
+  const basePreviewDocument = useMemo(() => buildEmailDocument(deferredMarkup), [deferredMarkup])
+  const currentPreviewDocument =
+    inlinedDocument.markup === deferredMarkup ? inlinedDocument.document : basePreviewDocument
 
   const isDirty =
     draft !== null &&
-    (savedTemplate === null ||
-      draft.name !== savedTemplate.name ||
+    savedTemplate !== null &&
+    (draft.name !== savedTemplate.name ||
       draft.category !== savedTemplate.category ||
       draft.subject !== savedTemplate.subject ||
       draft.markup !== savedTemplate.markup)
 
-  const loggedUserInitials = useMemo(
-    () =>
-      LOGGED_USER_NAME.split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((chunk) => chunk[0]?.toUpperCase() ?? '')
-        .join(''),
-    [],
-  )
+  const breadcrumbs = useMemo(() => {
+    if (view === 'templates') {
+      return ['Templates']
+    }
+
+    if (view === 'details') {
+      return ['Templates', isCreatingNew ? 'New Template' : draft?.name || 'Template Details']
+    }
+
+    if (view === 'preview') {
+      return ['Templates', draft?.name || 'Template', 'Preview']
+    }
+
+    return ['Templates', draft?.name || 'Template', 'Edit Design']
+  }, [draft?.name, isCreatingNew, view])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -237,7 +267,7 @@ export function App() {
   }, [companyId, templates])
 
   useEffect(() => {
-    if ((view !== 'details' && view !== 'editor') || !draft) {
+    if ((view !== 'editor' && view !== 'preview') || !draft) {
       return
     }
 
@@ -245,7 +275,10 @@ export function App() {
 
     inlineEmailDocument(deferredMarkup).then((nextDocument) => {
       if (!cancelled) {
-        setInlinedDocument(nextDocument)
+        setInlinedDocument({
+          document: nextDocument,
+          markup: deferredMarkup,
+        })
       }
     })
 
@@ -254,34 +287,128 @@ export function App() {
     }
   }, [deferredMarkup, draft, view])
 
+  const handleSelectCompany = (nextCompanyId: CompanyId) => {
+    if (nextCompanyId === companyId) {
+      return
+    }
+
+    startTransition(() => {
+      setCompanyId(nextCompanyId)
+      setView('templates')
+      setDraft(null)
+      setIsCreatingNew(false)
+      setActiveTemplateId(null)
+      setPreviewDevice('desktop')
+    })
+  }
+
+  const handleOpenList = () => {
+    startTransition(() => {
+      setView('templates')
+      setDraft(null)
+      setIsCreatingNew(false)
+      setActiveTemplateId(null)
+    })
+  }
+
   const handleOpenCreate = () => {
     startTransition(() => {
-      setCreateForm(createBlankForm())
-      setView('create')
+      setDraft(createDraft(companyId))
+      setIsCreatingNew(true)
       setActiveTemplateId(null)
-      setDraft(null)
-      setCopied(false)
+      setView('details')
+      setPreviewDevice('desktop')
     })
   }
 
   const handleOpenDetails = (template: TemplateRecord) => {
     startTransition(() => {
-      setActiveTemplateId(template.id)
       setDraft({ ...template })
+      setIsCreatingNew(false)
+      setActiveTemplateId(template.id)
       setView('details')
-      setCopied(false)
+      setPreviewDevice('desktop')
     })
   }
 
-  const handleSaveDraft = () => {
+  const handleOpenPreview = (template: TemplateRecord) => {
+    startTransition(() => {
+      setDraft({ ...template })
+      setIsCreatingNew(false)
+      setActiveTemplateId(template.id)
+      setView('preview')
+      setPreviewDevice('desktop')
+    })
+  }
+
+  const handleContinueFromDetails = () => {
     if (!draft) {
       return
     }
 
-    const now = new Date().toISOString()
-    const nextTemplate = {
+    const name = draft.name.trim()
+    const subject = draft.subject.trim()
+    const category = draft.category.trim()
+
+    if (!name || !subject || !category) {
+      return
+    }
+
+    if (isCreatingNew) {
+      const timestamp = new Date().toISOString()
+      const nextTemplate: TemplateRecord = {
+        ...draft,
+        category,
+        companyId,
+        createdAt: timestamp,
+        name,
+        subject,
+        updatedAt: timestamp,
+      }
+
+      startTransition(() => {
+        setTemplates((current) => [nextTemplate, ...current])
+        setDraft(nextTemplate)
+        setIsCreatingNew(false)
+        setActiveTemplateId(nextTemplate.id)
+        setView('editor')
+      })
+
+      return
+    }
+
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            category,
+            name,
+            subject,
+          }
+        : current,
+    )
+    setView('editor')
+  }
+
+  const handleSaveDraft = () => {
+    if (!draft || !activeTemplateId) {
+      return
+    }
+
+    const name = draft.name.trim()
+    const subject = draft.subject.trim()
+    const category = draft.category.trim()
+
+    if (!name || !subject || !category) {
+      return
+    }
+
+    const nextTemplate: TemplateRecord = {
       ...draft,
-      updatedAt: now,
+      category,
+      name,
+      subject,
+      updatedAt: new Date().toISOString(),
     }
 
     setTemplates((current) =>
@@ -290,335 +417,263 @@ export function App() {
     setDraft(nextTemplate)
   }
 
-  const handleCreateTemplate = () => {
-    const category = createForm.category.trim()
-    const name = createForm.name.trim()
-    const subject = createForm.subject.trim()
-
-    if (!category || !name || !subject) {
+  const handleCancelDetails = () => {
+    if (isCreatingNew) {
+      handleOpenList()
       return
     }
 
-    const now = new Date().toISOString()
-    const template: TemplateRecord = {
-      category,
-      companyId,
-      createdAt: now,
+    if (savedTemplate) {
+      setDraft({ ...savedTemplate })
+    }
+
+    handleOpenList()
+  }
+
+  const handleCancelEditor = () => {
+    if (!savedTemplate) {
+      handleOpenList()
+      return
+    }
+
+    setDraft({ ...savedTemplate })
+    setView('details')
+  }
+
+  const handleDuplicate = () => {
+    if (!duplicateState) {
+      return
+    }
+
+    const nextName = duplicateState.name.trim()
+
+    if (!nextName) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const duplicatedTemplate: TemplateRecord = {
+      ...duplicateState.template,
+      createdAt: timestamp,
       id: crypto.randomUUID(),
-      markup: sampleMarkup,
-      name,
-      subject,
-      updatedAt: now,
+      name: nextName,
+      updatedAt: timestamp,
     }
 
     startTransition(() => {
-      setTemplates((current) => [template, ...current])
-      setActiveTemplateId(template.id)
-      setDraft(template)
-      setPreviewDevice('desktop')
-      setView('editor')
+      setTemplates((current) => [duplicatedTemplate, ...current])
+      setDuplicateState(null)
+      setDraft({ ...duplicatedTemplate })
+      setActiveTemplateId(duplicatedTemplate.id)
+      setIsCreatingNew(false)
+      setView('details')
     })
   }
 
-  const handleCopyMarkup = async () => {
-    await navigator.clipboard.writeText(inlinedDocument)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1600)
-  }
-
-  const handleSelectCompany = (nextCompanyId: CompanyId) => {
-    if (nextCompanyId === companyId) {
+  const handleDeleteTemplate = () => {
+    if (!deleteTarget) {
       return
     }
 
-    startTransition(() => {
-      setCompanyId(nextCompanyId)
-      setCreateForm(createBlankForm())
-      setCopied(false)
+    setTemplates((current) => current.filter((template) => template.id !== deleteTarget.id))
 
-      if (!draft || draft.companyId !== nextCompanyId) {
-        setDraft(null)
-        setActiveTemplateId(null)
-        setView('templates')
-      }
-    })
+    if (activeTemplateId === deleteTarget.id) {
+      setDraft(null)
+      setActiveTemplateId(null)
+      setIsCreatingNew(false)
+      setView('templates')
+    }
+
+    setDeleteTarget(null)
   }
 
-  const previewDocument = view === 'details' || view === 'editor' ? inlinedDocument : fallbackDocument
   const currentDevice = devices[previewDevice]
 
   return (
-    <main className="layout" style={companyThemeStyle(currentCompany.theme)}>
-      <aside className="shell-sidebar">
-        <div className="shell-sidebar__brand">
-          <span className="shell-sidebar__eyebrow">E-mail Lab</span>
+    <main className="shell" style={companyThemeStyle(currentCompany.theme)}>
+      <aside className="sidebar">
+        <div className="sidebar__brand">
+          <span className="sidebar__eyebrow">E-mail Lab</span>
           <h1>E-mail Lab</h1>
-          <p>Templates separados por empresa, com preview tecnico e identidade visual por projeto.</p>
         </div>
 
-        <section className="user-panel">
-          <div className="user-panel__avatar">{loggedUserInitials}</div>
-          <div className="user-panel__content">
-            <span className="shell-sidebar__label">Usuario logado</span>
+        <div className="account-card">
+          <span className="account-card__avatar">
+            <UserRound size={16} />
+          </span>
+          <span className="account-card__meta">
+            <span className="account-card__label">Account</span>
             <strong>{LOGGED_USER_NAME}</strong>
-            <span className={`connection-badge ${supabaseReady ? 'connection-badge--ready' : ''}`}>
-              {supabaseReady ? 'Supabase pronto' : 'Modo local'}
-            </span>
-            <label className="company-switch">
-              <span>Empresa selecionada</span>
-              <select
-                onChange={(event) => handleSelectCompany(event.target.value as CompanyId)}
-                value={companyId}
-              >
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+          </span>
+        </div>
+
+        <label className="company-card">
+          <span className="company-card__label">Empresa</span>
+          <div className="company-card__control">
+            <select
+              aria-label="Selecionar empresa"
+              onChange={(event) => handleSelectCompany(event.target.value as CompanyId)}
+              value={companyId}
+            >
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={16} />
           </div>
-        </section>
+        </label>
 
-        <button className="primary-action" onClick={handleOpenCreate} type="button">
-          <Plus size={18} />
-          Novo template
-        </button>
-
-        <nav className="shell-nav" aria-label="Navegacao">
-          <button className="shell-nav__item shell-nav__item--active" type="button">
-            <LayoutTemplate size={18} />
-            <span>Templates</span>
-            <strong>{companyTemplates.length}</strong>
-          </button>
-        </nav>
+        <div className="sidebar__group">
+          <span className="sidebar__group-label">Workspace</span>
+          <nav className="sidebar__nav" aria-label="Workspace">
+            <button
+              className={`sidebar__nav-item ${view === 'templates' ? 'is-active' : ''}`.trim()}
+              onClick={handleOpenList}
+              type="button"
+            >
+              <LayoutTemplate size={18} />
+              <span>Templates</span>
+            </button>
+          </nav>
+        </div>
       </aside>
 
-      <section className="shell-content">
-        {view === 'templates' && (
-          <section className="page">
-            <header className="page-header">
-              <div>
-                <p className="page-header__eyebrow">{currentCompany.name}</p>
-                <h2>Templates da empresa</h2>
-                <p>Cada empresa mantem seus proprios templates e sua propria identidade visual.</p>
-              </div>
-            </header>
+      <section className="shell__content">
+        <header className="topbar">
+          <div className="breadcrumb">
+            {breadcrumbs.map((item, index) => (
+              <span className="breadcrumb__item" key={`${item}-${index}`}>
+                {index > 0 && <ChevronRight size={14} />}
+                <span>{item}</span>
+              </span>
+            ))}
+          </div>
 
-            {companyTemplates.length === 0 ? (
-              <section className="empty-state">
-                <FolderOpen size={28} />
-                <h3>Nenhum template cadastrado</h3>
-                <p>
-                  Crie o primeiro template de {currentCompany.name} para comecar a organizar os
-                  envios dessa empresa.
-                </p>
-                <button
-                  className="primary-action primary-action--inline"
-                  onClick={handleOpenCreate}
-                  type="button"
-                >
-                  <Plus size={18} />
-                  Novo template
-                </button>
-              </section>
-            ) : (
-              <section className="table-card">
-                <div className="table-card__header">
-                  <h3>Lista de templates</h3>
-                  <span>{companyTemplates.length} itens</span>
+          <div className="topbar__user">
+            <span className="topbar__user-dot" />
+            <span>{LOGGED_USER_NAME}</span>
+            <ChevronDown size={14} />
+          </div>
+        </header>
+
+        <div className="shell__body">
+          {view === 'templates' && (
+            <section className="page">
+              <header className="page-heading">
+                <div>
+                  <h2>Templates</h2>
+                  <p>{currentCompany.name}</p>
                 </div>
 
-                <div className="template-table-wrap">
+                <button className="primary-button" onClick={handleOpenCreate} type="button">
+                  <Plus size={16} />
+                  Create New Template
+                </button>
+              </header>
+
+              {companyTemplates.length === 0 ? (
+                <section className="empty-card">
+                  <FolderOpen size={30} />
+                  <h3>You don't have any email templates yet</h3>
+                  <p>
+                    Design, edit and organize the HTML email templates for {currentCompany.name} in
+                    one place.
+                  </p>
+                </section>
+              ) : (
+                <section className="table-card">
                   <table className="template-table" aria-label="Lista de templates">
-                    <colgroup>
-                      <col className="template-table__col template-table__col--name" />
-                      <col className="template-table__col template-table__col--category" />
-                      <col className="template-table__col template-table__col--subject" />
-                      <col className="template-table__col template-table__col--updated" />
-                      <col className="template-table__col template-table__col--actions" />
-                    </colgroup>
                     <thead>
-                      <tr className="template-table__head">
-                        <th scope="col">Nome</th>
-                        <th scope="col">Categoria</th>
-                        <th scope="col">Assunto</th>
-                        <th scope="col">Atualizado</th>
-                        <th scope="col">Acoes</th>
+                      <tr>
+                        <th>Template name</th>
+                        <th>Type</th>
+                        <th>Category</th>
+                        <th>Last update</th>
+                        <th aria-label="Acoes" />
                       </tr>
                     </thead>
                     <tbody>
                       {companyTemplates.map((template) => (
-                        <tr className="template-row" key={template.id}>
-                          <td className="template-row__name">
-                            <strong>{template.name}</strong>
-                          </td>
+                        <tr key={template.id}>
                           <td>
-                            <span className="tag-chip">{template.category}</span>
+                            <button
+                              className="table-link"
+                              onClick={() => handleOpenDetails(template)}
+                              type="button"
+                            >
+                              {template.name}
+                            </button>
                           </td>
-                          <td className="template-row__subject">{template.subject}</td>
+                          <td>HTML</td>
+                          <td>{template.category}</td>
                           <td>{dateFormatter.format(new Date(template.updatedAt))}</td>
-                          <td className="row-actions">
-                            <button
-                              className="secondary-button"
-                              onClick={() => handleOpenDetails(template)}
-                              type="button"
-                            >
-                              <Eye size={16} />
-                              Preview
-                            </button>
-                            <button
-                              className="secondary-button"
-                              onClick={() => handleOpenDetails(template)}
-                              type="button"
-                            >
-                              <FilePenLine size={16} />
-                              Editar
-                            </button>
+                          <td>
+                            <div className="icon-actions">
+                              <button
+                                aria-label={`Visualizar ${template.name}`}
+                                className="icon-button"
+                                onClick={() => handleOpenPreview(template)}
+                                title="Preview"
+                                type="button"
+                              >
+                                <Eye size={16} />
+                              </button>
+                              <button
+                                aria-label={`Editar ${template.name}`}
+                                className="icon-button"
+                                onClick={() => handleOpenDetails(template)}
+                                title="Editar"
+                                type="button"
+                              >
+                                <FilePenLine size={16} />
+                              </button>
+                              <button
+                                aria-label={`Duplicar ${template.name}`}
+                                className="icon-button"
+                                onClick={() =>
+                                  setDuplicateState({
+                                    name: buildDuplicateName(template.name),
+                                    template,
+                                  })
+                                }
+                                title="Duplicar"
+                                type="button"
+                              >
+                                <Copy size={16} />
+                              </button>
+                              <button
+                                aria-label={`Excluir ${template.name}`}
+                                className="icon-button icon-button--danger"
+                                onClick={() => setDeleteTarget(template)}
+                                title="Excluir"
+                                type="button"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
-              </section>
-            )}
-          </section>
-        )}
-
-        {view === 'create' && (
-          <section className="page">
-            <header className="page-header page-header--split">
-              <div>
-                <p className="page-header__eyebrow">{currentCompany.name}</p>
-                <h2>Novo template</h2>
-                <p>Escolha uma categoria existente ou crie uma nova. Depois seguimos para o editor.</p>
-              </div>
-
-              <button className="secondary-button" onClick={() => setView('templates')} type="button">
-                <ArrowLeft size={16} />
-                Voltar
-              </button>
-            </header>
-
-            <section className="form-card">
-              <div className="form-grid">
-                <CategoryField
-                  categories={availableCategories}
-                  onChange={(value) =>
-                    setCreateForm((current) => ({
-                      ...current,
-                      category: value,
-                    }))
-                  }
-                  value={createForm.category}
-                />
-
-                <label className="field">
-                  <span>Nome do template</span>
-                  <input
-                    onChange={(event) =>
-                      setCreateForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="Ex.: onboarding-boas-vindas"
-                    value={createForm.name}
-                  />
-                </label>
-
-                <label className="field field--full">
-                  <span>Assunto</span>
-                  <input
-                    onChange={(event) =>
-                      setCreateForm((current) => ({
-                        ...current,
-                        subject: event.target.value,
-                      }))
-                    }
-                    placeholder="Ex.: Bem-vindo ao portal da empresa"
-                    value={createForm.subject}
-                  />
-                </label>
-              </div>
-
-              <div className="form-actions">
-                <button className="secondary-button" onClick={() => setView('templates')} type="button">
-                  Cancelar
-                </button>
-                <button
-                  className="primary-action primary-action--inline"
-                  disabled={
-                    !createForm.category.trim() ||
-                    !createForm.name.trim() ||
-                    !createForm.subject.trim()
-                  }
-                  onClick={handleCreateTemplate}
-                  type="button"
-                >
-                  <Plus size={18} />
-                  Criar e editar
-                </button>
-              </div>
+                </section>
+              )}
             </section>
-          </section>
-        )}
+          )}
 
-        {view === 'details' && draft && (
-          <section className="page">
-            <header className="page-header page-header--split">
-              <div>
-                <p className="page-header__eyebrow">{currentCompany.name}</p>
-                <h2>{draft.name}</h2>
-                <p>Informacoes gerais do template, com preview tecnico e acesso ao editor.</p>
-              </div>
+          {view === 'details' && draft && (
+            <section className="page">
+              <div className="details-shell">
+                <header className="details-shell__header">
+                  <h2>Template Details</h2>
+                  <p>Defina as informacoes principais antes de entrar na edicao do template.</p>
+                </header>
 
-              <div className="header-actions">
-                <button className="secondary-button" onClick={() => setView('templates')} type="button">
-                  <ArrowLeft size={16} />
-                  Voltar para templates
-                </button>
-                <button className="secondary-button" onClick={handleSaveDraft} type="button">
-                  <Save size={16} />
-                  Salvar informacoes
-                </button>
-                <button
-                  className="primary-action primary-action--inline"
-                  onClick={() => setView('editor')}
-                  type="button"
-                >
-                  <FilePenLine size={18} />
-                  Editar codigo
-                </button>
-              </div>
-            </header>
-
-            <section className="details-grid">
-              <article className="info-card">
-                <div className="info-card__header">
-                  <h3>Informacoes gerais</h3>
-                  <p>Dados basicos do template antes de entrar no codigo.</p>
-                </div>
-
-                <div className="form-grid">
-                  <CategoryField
-                    categories={availableCategories}
-                    onChange={(value) =>
-                      setDraft((current) =>
-                        current
-                          ? {
-                              ...current,
-                              category: value,
-                            }
-                          : current,
-                      )
-                    }
-                    value={draft.category}
-                  />
-
+                <div className="details-fields">
                   <label className="field">
-                    <span>Nome do template</span>
+                    <span>Template name *</span>
                     <input
                       onChange={(event) =>
                         setDraft((current) =>
@@ -634,8 +689,8 @@ export function App() {
                     />
                   </label>
 
-                  <label className="field field--full">
-                    <span>Assunto</span>
+                  <label className="field">
+                    <span>Subject *</span>
                     <input
                       onChange={(event) =>
                         setDraft((current) =>
@@ -650,197 +705,292 @@ export function App() {
                       value={draft.subject}
                     />
                   </label>
+
+                  <CategoryField
+                    categories={availableCategories}
+                    label="Category *"
+                    onChange={(value) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              category: value,
+                            }
+                          : current,
+                      )
+                    }
+                    value={draft.category}
+                  />
                 </div>
 
-                <div className="meta-grid">
-                  <div>
-                    <span>Empresa</span>
-                    <strong>{currentCompany.name}</strong>
-                  </div>
-                  <div>
-                    <span>Criado em</span>
-                    <strong>{dateFormatter.format(new Date(draft.createdAt))}</strong>
-                  </div>
-                  <div>
-                    <span>Ultima atualizacao</span>
-                    <strong>{dateFormatter.format(new Date(draft.updatedAt))}</strong>
-                  </div>
-                  <div>
-                    <span>Markup</span>
-                    <strong>{markupStats.lines} linhas</strong>
-                  </div>
-                </div>
-              </article>
+                <footer className="details-shell__actions">
+                  <button className="primary-button" onClick={handleContinueFromDetails} type="button">
+                    Continue
+                  </button>
+                  <button className="secondary-button" onClick={handleCancelDetails} type="button">
+                    Cancel
+                  </button>
+                </footer>
+              </div>
+            </section>
+          )}
 
-              <article className="preview-shell">
-                <header className="preview-shell__header">
-                  <div>
+          {view === 'preview' && draft && (
+            <section className="page page--editor">
+              <div className="editor-layout editor-layout--preview">
+                <section className="editor-pane editor-pane--summary">
+                  <div className="editor-pane__header">
+                    <h3>{draft.name}</h3>
+                    <p>Preview do template sem abrir o editor.</p>
+                  </div>
+
+                  <div className="template-summary">
+                    <div>
+                      <span>Subject</span>
+                      <strong>{draft.subject}</strong>
+                    </div>
+                    <div>
+                      <span>Category</span>
+                      <strong>{draft.category}</strong>
+                    </div>
+                    <div>
+                      <span>Company</span>
+                      <strong>{currentCompany.name}</strong>
+                    </div>
+                    <div>
+                      <span>Last update</span>
+                      <strong>{dateFormatter.format(new Date(draft.updatedAt))}</strong>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="preview-pane">
+                  <div className="preview-pane__header">
                     <h3>Preview</h3>
-                    <p>Alternancia por dispositivo inspirada no fluxo do Mailtrap Templates.</p>
-                  </div>
-
-                  <div className="preview-shell__actions">
-                    <div className="tab-switch" role="tablist" aria-label="Dispositivo">
+                    <div className="device-switch" role="tablist" aria-label="Dispositivo">
                       {deviceEntries.map(([deviceId, device]) => {
                         const Icon = device.icon
 
                         return (
                           <button
+                            aria-label={device.label}
                             aria-selected={previewDevice === deviceId}
                             className={previewDevice === deviceId ? 'is-active' : ''}
                             key={deviceId}
                             onClick={() => setPreviewDevice(deviceId)}
                             role="tab"
+                            title={device.label}
                             type="button"
                           >
                             <Icon size={16} />
-                            {device.label}
                           </button>
                         )
                       })}
                     </div>
-
-                    <button className="secondary-button" onClick={handleCopyMarkup} type="button">
-                      <Copy size={16} />
-                      {copied ? 'Copiado' : 'Copiar markup'}
-                    </button>
                   </div>
-                </header>
 
-                <PreviewFrame
-                  description={currentDevice.description}
-                  srcDoc={previewDocument}
-                  title={currentDevice.title}
-                  viewportHeight={currentDevice.height}
-                  viewportWidth={currentDevice.width}
-                />
-              </article>
-            </section>
-          </section>
-        )}
-
-        {view === 'editor' && draft && (
-          <section className="page page--editor">
-            <header className="page-header page-header--split">
-              <div>
-                <p className="page-header__eyebrow">{currentCompany.name}</p>
-                <h2>Editor de template</h2>
-                <p>Um unico editor de markup, com HTML e CSS no mesmo documento, como no Mailtrap.</p>
+                  <PreviewFrame
+                    description={currentDevice.description}
+                    showHeader={false}
+                    srcDoc={currentPreviewDocument}
+                    title={currentDevice.title}
+                    viewportHeight={currentDevice.height}
+                    viewportWidth={currentDevice.width}
+                  />
+                </section>
               </div>
 
-              <div className="header-actions">
-                <button className="secondary-button" onClick={() => setView('details')} type="button">
-                  <ArrowLeft size={16} />
-                  Informacoes gerais
-                </button>
-                <button className="secondary-button" onClick={handleCopyMarkup} type="button">
-                  <Copy size={16} />
-                  {copied ? 'Copiado' : 'Copiar markup'}
+              <footer className="bottom-bar">
+                <button className="secondary-button" onClick={handleOpenList} type="button">
+                  Cancel
                 </button>
                 <button
-                  className="primary-action primary-action--inline"
-                  disabled={!isDirty}
-                  onClick={handleSaveDraft}
+                  className="primary-button"
+                  onClick={() => handleOpenDetails(savedTemplate ?? draft)}
                   type="button"
                 >
-                  <Save size={18} />
-                  {isDirty ? 'Salvar template' : 'Salvo'}
+                  <FilePenLine size={16} />
+                  Edit Template
                 </button>
-              </div>
-            </header>
-
-            <section className="editor-summary">
-              <span className="tag-chip">{currentCompany.name}</span>
-              <span className="tag-chip">{draft.category}</span>
-              <span className="summary-subject">{draft.subject}</span>
+              </footer>
             </section>
+          )}
 
-            <section className="workspace-grid">
-              <article className="editor-card">
-                <header className="editor-card__header">
-                  <div>
-                    <h3>Markup do e-mail</h3>
+          {view === 'editor' && draft && (
+            <section className="page page--editor">
+              <div className="editor-layout">
+                <section className="editor-pane">
+                  <div className="editor-pane__header">
+                    <div className="editor-pane__tabs">
+                      <button className="is-active" type="button">
+                        Code Editor
+                      </button>
+                    </div>
                     <p>
-                      Cole tudo no mesmo lugar: estrutura HTML, <code>{'<style>'}</code> e ajustes do
-                      template.
+                      Edit the email template in HTML, preview how it looks and validate the final
+                      structure before saving.
                     </p>
                   </div>
-                </header>
 
-                <textarea
-                  aria-label="Editor de markup do e-mail"
-                  className="editor-card__textarea"
+                  <div className="editor-pane__surface">
+                    <div className="editor-pane__surface-head">
+                      <span className="editor-pill editor-pill--active">HTML</span>
+                      <span className="editor-meta">
+                        {markupStats.lines} lines ·{' '}
+                        {markupStats.hasStyleTag ? 'style tag presente' : 'sem style tag'}
+                      </span>
+                    </div>
+
+                    <textarea
+                      aria-label="Editor de markup do email"
+                      className="editor-textarea"
+                      onChange={(event) =>
+                        setDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                markup: event.target.value,
+                              }
+                            : current,
+                        )
+                      }
+                      spellCheck={false}
+                      value={draft.markup}
+                    />
+                  </div>
+                </section>
+
+                <section className="preview-pane">
+                  <div className="preview-pane__header">
+                    <h3>Preview</h3>
+                    <div className="device-switch" role="tablist" aria-label="Dispositivo">
+                      {deviceEntries.map(([deviceId, device]) => {
+                        const Icon = device.icon
+
+                        return (
+                          <button
+                            aria-label={device.label}
+                            aria-selected={previewDevice === deviceId}
+                            className={previewDevice === deviceId ? 'is-active' : ''}
+                            key={deviceId}
+                            onClick={() => setPreviewDevice(deviceId)}
+                            role="tab"
+                            title={device.label}
+                            type="button"
+                          >
+                            <Icon size={16} />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <PreviewFrame
+                    description={currentDevice.description}
+                    showHeader={false}
+                    srcDoc={currentPreviewDocument}
+                    title={currentDevice.title}
+                    viewportHeight={currentDevice.height}
+                    viewportWidth={currentDevice.width}
+                  />
+                </section>
+              </div>
+
+              <footer className="bottom-bar">
+                <button className="secondary-button" onClick={handleCancelEditor} type="button">
+                  Cancel
+                </button>
+                <button className="primary-button" disabled={!isDirty} onClick={handleSaveDraft} type="button">
+                  <Save size={16} />
+                  Save
+                </button>
+                <span className="bottom-bar__status">{isDirty ? 'Unsaved' : 'Saved'}</span>
+              </footer>
+            </section>
+          )}
+        </div>
+      </section>
+
+      {duplicateState && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card" role="dialog">
+            <header className="modal-card__header">
+              <h3>Duplicate template</h3>
+              <button
+                aria-label="Fechar"
+                className="icon-button"
+                onClick={() => setDuplicateState(null)}
+                type="button"
+              >
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__body">
+              <label className="field">
+                <span>New template name</span>
+                <input
+                  autoFocus
                   onChange={(event) =>
-                    setDraft((current) =>
+                    setDuplicateState((current) =>
                       current
                         ? {
                             ...current,
-                            markup: event.target.value,
+                            name: event.target.value,
                           }
                         : current,
                     )
                   }
-                  spellCheck={false}
-                  value={draft.markup}
+                  value={duplicateState.name}
                 />
+              </label>
+            </div>
 
-                <footer className="editor-card__footer">
-                  <span>{markupStats.lines} linhas</span>
-                  <span>{markupStats.hasStyleTag ? 'Com style tag' : 'Sem style tag'}</span>
-                  <span>{markupStats.hasMediaQuery ? 'Com media queries' : 'Sem media queries'}</span>
-                </footer>
-              </article>
-
-              <article className="preview-shell">
-                <header className="preview-shell__header">
-                  <div>
-                    <h3>Preview</h3>
-                    <p>Atualizacao em tempo real conforme o codigo e alterado.</p>
-                  </div>
-
-                  <div className="preview-shell__actions">
-                    <div className="tab-switch" role="tablist" aria-label="Dispositivo">
-                      {deviceEntries.map(([deviceId, device]) => {
-                        const Icon = device.icon
-
-                        return (
-                          <button
-                            aria-selected={previewDevice === deviceId}
-                            className={previewDevice === deviceId ? 'is-active' : ''}
-                            key={deviceId}
-                            onClick={() => setPreviewDevice(deviceId)}
-                            role="tab"
-                            type="button"
-                          >
-                            <Icon size={16} />
-                            {device.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </header>
-
-                <PreviewFrame
-                  description={currentDevice.description}
-                  srcDoc={previewDocument}
-                  title={currentDevice.title}
-                  viewportHeight={currentDevice.height}
-                  viewportWidth={currentDevice.width}
-                />
-
-                <div className="preview-note">
-                  <strong>Preview tecnico</strong>
-                  <span>
-                    Renderizacao em iframe com CSS inline. Fiel para navegador e webviews; clientes
-                    com engine propria ainda exigem testes externos.
-                  </span>
-                </div>
-              </article>
-            </section>
+            <footer className="modal-card__actions">
+              <button className="secondary-button" onClick={() => setDuplicateState(null)} type="button">
+                Cancel
+              </button>
+              <button className="primary-button" onClick={handleDuplicate} type="button">
+                Duplicate
+              </button>
+            </footer>
           </section>
-        )}
-      </section>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card" role="dialog">
+            <header className="modal-card__header">
+              <h3>Delete template</h3>
+              <button
+                aria-label="Fechar"
+                className="icon-button"
+                onClick={() => setDeleteTarget(null)}
+                type="button"
+              >
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__body">
+              <p>
+                Delete <strong>{deleteTarget.name}</strong>? This action removes the template from
+                the current company list.
+              </p>
+            </div>
+
+            <footer className="modal-card__actions">
+              <button className="secondary-button" onClick={() => setDeleteTarget(null)} type="button">
+                Cancel
+              </button>
+              <button className="danger-button" onClick={handleDeleteTemplate} type="button">
+                Delete
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </main>
   )
 }

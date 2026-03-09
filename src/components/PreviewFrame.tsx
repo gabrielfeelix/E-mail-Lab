@@ -6,6 +6,7 @@ type PreviewFrameProps = {
   viewportWidth: number
   viewportHeight: number
   srcDoc: string
+  showHeader?: boolean
 }
 
 export function PreviewFrame({
@@ -14,6 +15,7 @@ export function PreviewFrame({
   viewportWidth,
   viewportHeight,
   srcDoc,
+  showHeader = true,
 }: PreviewFrameProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [scale, setScale] = useState(1)
@@ -42,17 +44,19 @@ export function PreviewFrame({
   }, [viewportWidth])
 
   return (
-    <section className="preview-card">
-      <header className="preview-card__header">
-        <div>
-          <p className="preview-card__eyebrow">{title}</p>
-          <h3>{description}</h3>
-        </div>
-        <div className="preview-card__meta">
-          <span>{viewportWidth}px</span>
-          <span>{Math.round(scale * 100)}%</span>
-        </div>
-      </header>
+    <section className={`preview-card ${showHeader ? '' : 'preview-card--plain'}`.trim()}>
+      {showHeader && (
+        <header className="preview-card__header">
+          <div>
+            <p className="preview-card__eyebrow">{title}</p>
+            <h3>{description}</h3>
+          </div>
+          <div className="preview-card__meta">
+            <span>{viewportWidth}px</span>
+            <span>{Math.round(scale * 100)}%</span>
+          </div>
+        </header>
+      )}
 
       <div className="preview-card__viewport" ref={hostRef}>
         <div

@@ -7,10 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db:apply": "node ./scripts/apply-supabase-schema.mjs"
   },
   "dependencies": {
-    "@fontsource/space-grotesk": "^5.2.8",
     "@supabase/supabase-js": "^2.99.0",
     "juice": "^11.0.3",
     "lucide-react": "^0.511.0",
