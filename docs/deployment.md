@@ -5,7 +5,7 @@
 - Frontend uses `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
 - Do not place the Supabase `service_role` key in Vite env files or in the repository.
 - Remote DDL is not available with `publishable` or `service_role` in the browser. To apply `supabase/schema.sql`, use `SUPABASE_ACCESS_TOKEN` with `npm run db:apply`.
-- `SUPABASE_PROJECT_REF` defaults to `mejsihwvvpcmiktnnnpx` in the helper script.
+- `SUPABASE_PROJECT_REF` defaults to `mejsihwvvpcmiktjnnpx` in the helper script.
 
 ## Vercel via GitHub Actions
 

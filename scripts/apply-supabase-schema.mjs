@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 const schemaPath = resolve(process.cwd(), 'supabase/schema.sql')
-const projectRef = process.env.SUPABASE_PROJECT_REF || 'mejsihwvvpcmiktnnnpx'
+const projectRef = process.env.SUPABASE_PROJECT_REF || 'mejsihwvvpcmiktjnnpx'
 const accessToken = process.env.SUPABASE_ACCESS_TOKEN
 
 if (!accessToken) {
