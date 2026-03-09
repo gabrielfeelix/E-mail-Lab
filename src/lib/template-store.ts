@@ -154,10 +154,14 @@ export async function deleteRemoteTemplate(id: string) {
     return
   }
 
-  const result = await client.from('email_templates').delete().eq('id', id)
+  const result = await client.from('email_templates').delete().eq('id', id).select('id').maybeSingle()
 
   if (result.error) {
     throw result.error
+  }
+
+  if (!result.data?.id) {
+    throw new Error('O template nao foi removido do banco.')
   }
 }
 
