@@ -65,7 +65,12 @@ function buildPrompt(body) {
       generationMode === 'variation'
         ? 'Reaproveite a estrutura, identidade visual e hierarquia do template atual como base, evoluindo o layout e o conteudo sem trocar a marca.'
         : 'Se nao houver template atual como base, crie uma estrutura completa coerente com a marca e com o briefing.',
-      'Evite qualquer largura fixa maior que 100% no mobile. Use tabelas fluidas, wrappers com width:100% e imagens com max-width:100%.',
+      'No mobile, nenhum bloco pode exigir scroll horizontal.',
+      'Use um wrapper principal com width:100% e max-width:600px centralizado.',
+      'Evite qualquer largura fixa maior que 100% no mobile. Use tabelas fluidas, wrappers com width:100%, max-width:100% e imagens com max-width:100%.',
+      'Se houver colunas, empilhe no mobile com @media (max-width:600px).',
+      'Textos longos, links e codigos devem quebrar linha sem vazar lateralmente.',
+      'Nao use palavras em fontes gigantes ou caixas estreitas que facam o texto cortar; preserve leitura completa em 320px a 430px.',
     ].join(' '),
   )
 

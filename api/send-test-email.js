@@ -7,7 +7,7 @@ const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_IuSuAC__d87fbwdPtybqsw_
 const DOCTYPE = '<!doctype html>'
 const BASE_STYLE_MARKER = 'data-email-lab-base'
 const SAFE_BASE_STYLE =
-  'body{margin:0;padding:0;background:#ffffff;color:#111827;-webkit-font-smoothing:antialiased;}img{max-width:100%;height:auto;border:0;}table{border-collapse:collapse;}a{text-decoration:none;}'
+  'html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden;background:#ffffff;color:#111827;-webkit-font-smoothing:antialiased;}body,table,tbody,tr,td,div,p,span,a,strong,em{max-width:100%;overflow-wrap:anywhere;word-break:break-word;}table{width:100%;max-width:100%!important;border-collapse:collapse;table-layout:fixed;}img{display:block;max-width:100%!important;height:auto!important;border:0;}a{text-decoration:none;}'
 const STYLE_BLOCK_PATTERN = /<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi
 
 function readEnv(...names) {
