@@ -81,6 +81,18 @@ export async function signOutCurrentUser() {
   }
 }
 
+export async function updateCurrentUserPassword(password: string) {
+  const client = getSupabaseBrowserClient()
+
+  const result = await client.auth.updateUser({
+    password,
+  })
+
+  if (result.error) {
+    throw result.error
+  }
+}
+
 export async function loadCurrentProfile(userId: string) {
   const client = getSupabaseBrowserClient()
 

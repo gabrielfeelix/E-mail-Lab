@@ -1,4 +1,4 @@
-import { Eye, EyeOff, LockKeyhole, Mail, Sparkles, UserRound } from 'lucide-react'
+import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserRound } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
 type AuthScreenProps = {
@@ -19,82 +19,83 @@ export function AuthScreen({ isSubmitting, onSignIn, onSignUp }: AuthScreenProps
 
   const handleSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
+    setError(null)
+
+    if (!email.trim().toLowerCase().endsWith('@oderco.com.br')) {
+      setError('Use um email corporativo @oderco.com.br.')
+      return
+    }
+
+    if (mode === 'signup') {
+      if (!fullName.trim()) {
+        setError('Informe seu nome.')
+        return
+      }
+
+      if (password !== confirmPassword) {
+        setError('As senhas nao conferem.')
+        return
+      }
+
+      if (password.length < 6) {
+        setError('A senha precisa ter pelo menos 6 caracteres.')
+        return
+      }
+
+      try {
+        await onSignUp(fullName.trim(), email.trim().toLowerCase(), password)
+      } catch (nextError) {
+        setError(nextError instanceof Error ? nextError.message : 'Nao foi possivel criar a conta.')
+      }
+
+      return
+    }
 
     try {
-      setError(null)
-
-      if (!email.trim().toLowerCase().endsWith('@oderco.com.br')) {
-        setError('Use um email corporativo @oderco.com.br.')
-        return
-      }
-
-      if (mode === 'signup') {
-        if (!fullName.trim()) {
-          setError('Informe seu nome.')
-          return
-        }
-
-        if (password !== confirmPassword) {
-          setError('As senhas nao conferem.')
-          return
-        }
-
-        if (password.length < 6) {
-          setError('A senha precisa ter pelo menos 6 caracteres.')
-          return
-        }
-
-        await onSignUp(fullName.trim(), email.trim().toLowerCase(), password)
-        return
-      }
-
       await onSignIn(email.trim().toLowerCase(), password)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Nao foi possivel autenticar.')
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Nao foi possivel autenticar.')
     }
   }
 
   return (
     <main className="auth-shell">
-      <section className="auth-panel">
-        <div className="auth-panel__hero">
-          <div className="auth-panel__brand">
-            <span className="auth-panel__eyebrow">E-mail Lab</span>
-            <span className="auth-panel__badge">
-              <Sparkles size={14} />
-              Workspace corporativo
-            </span>
-          </div>
+      <section className="auth-layout">
+        <div className="auth-hero">
+          <span className="auth-hero__eyebrow">E-mail Lab</span>
+          <h1>Centralize templates, secoes e identidade visual por empresa.</h1>
+          <p>
+            Um ambiente unico para criar emails, validar em contexto Gmail e compartilhar padroes entre equipes.
+          </p>
 
-          <div className="auth-panel__copy">
-            <h1>Biblioteca de templates por empresa, com preview fiel e geração assistida por IA.</h1>
-            <p>Entre com sua conta corporativa Oderco para acessar projetos compartilhados, seções favoritas e edição centralizada da equipe.</p>
-          </div>
-
-          <div className="auth-highlights">
-            <article className="auth-highlight">
-              <strong>Empresas unificadas</strong>
-              <span>PCYES, ODERCO, AZUX, CRM, ODEX, TONANTE e QUATI no mesmo ambiente.</span>
+          <div className="auth-hero__highlights">
+            <article>
+              <strong>Empresas no mesmo workspace</strong>
+              <span>PCYES, ODERCO, AZUX, CRM, ODEX, TONANTE e QUATI com identidade separada.</span>
             </article>
-            <article className="auth-highlight">
-              <strong>Preview contextual</strong>
-              <span>Leitura em mobile, tablet e notebook com shell visual inspirada em Gmail.</span>
+            <article>
+              <strong>Biblioteca reutilizavel</strong>
+              <span>Headers, footers e contexto visual prontos para acelerar novas campanhas.</span>
             </article>
-            <article className="auth-highlight">
-              <strong>Base pronta para IA</strong>
-              <span>Headers e footers favoritos servem de referência para geração de novos emails.</span>
+            <article>
+              <strong>Controle corporativo</strong>
+              <span>Entrada restrita ao dominio Oderco com compartilhamento por empresa.</span>
             </article>
           </div>
         </div>
 
-        <div className="auth-card">
-          <div className="auth-card__header">
+        <div className="auth-card auth-card--elevated">
+          <header className="auth-card__header">
             <div>
-              <h2>{mode === 'signin' ? 'Acessar workspace' : 'Criar conta corporativa'}</h2>
-              <p>{mode === 'signin' ? 'Use seu e-mail Oderco para entrar.' : 'Cadastro restrito ao domínio @oderco.com.br.'}</p>
+              <h2>{mode === 'signin' ? 'Acessar workspace' : 'Criar sua conta'}</h2>
+              <p>
+                {mode === 'signin'
+                  ? 'Entre com sua conta corporativa para acessar os projetos compartilhados.'
+                  : 'Cadastre uma nova conta usando apenas o dominio @oderco.com.br.'}
+              </p>
             </div>
             <span className="auth-card__domain">@oderco.com.br</span>
-          </div>
+          </header>
 
           <div className="auth-card__tabs">
             <button className={mode === 'signin' ? 'is-active' : ''} onClick={() => setMode('signin')} type="button">
@@ -105,9 +106,9 @@ export function AuthScreen({ isSubmitting, onSignIn, onSignUp }: AuthScreenProps
             </button>
           </div>
 
-          <form className="auth-card__body" onSubmit={handleSubmit}>
+          <form className="auth-form" onSubmit={handleSubmit}>
             {mode === 'signup' && (
-              <label className="field">
+              <label className="field auth-field">
                 <span>Nome</span>
                 <div className="auth-input">
                   <span className="auth-input__icon">
@@ -117,14 +118,14 @@ export function AuthScreen({ isSubmitting, onSignIn, onSignUp }: AuthScreenProps
                     autoComplete="name"
                     className="auth-input__field"
                     onChange={(event) => setFullName(event.target.value)}
-                    placeholder="Seu nome"
+                    placeholder="Seu nome completo"
                     value={fullName}
                   />
                 </div>
               </label>
             )}
 
-            <label className="field">
+            <label className="field auth-field">
               <span>E-mail</span>
               <div className="auth-input">
                 <span className="auth-input__icon">
@@ -141,7 +142,7 @@ export function AuthScreen({ isSubmitting, onSignIn, onSignUp }: AuthScreenProps
               </div>
             </label>
 
-            <label className="field">
+            <label className="field auth-field">
               <span>Senha</span>
               <div className="auth-input">
                 <span className="auth-input__icon">
@@ -167,17 +168,17 @@ export function AuthScreen({ isSubmitting, onSignIn, onSignUp }: AuthScreenProps
             </label>
 
             {mode === 'signup' && (
-              <label className="field">
+              <label className="field auth-field">
                 <span>Confirmar senha</span>
                 <div className="auth-input">
                   <span className="auth-input__icon">
-                    <LockKeyhole size={16} />
+                    <ShieldCheck size={16} />
                   </span>
                   <input
                     autoComplete="new-password"
                     className="auth-input__field auth-input__field--password"
                     onChange={(event) => setConfirmPassword(event.target.value)}
-                    placeholder="Repita sua senha"
+                    placeholder="Repita a senha"
                     type={showConfirmPassword ? 'text' : 'password'}
                     value={confirmPassword}
                   />

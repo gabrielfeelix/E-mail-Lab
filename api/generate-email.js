@@ -42,6 +42,10 @@ function buildPrompt(body) {
     if (String(body.brandProfile.exampleMarkup || '').trim()) {
       sections.push(`Exemplo de email da marca:\n${body.brandProfile.exampleMarkup}`)
     }
+
+    if (String(body.brandProfile.referenceImageName || '').trim()) {
+      sections.push(`Imagem de referencia enviada: ${body.brandProfile.referenceImageName}`)
+    }
   }
 
   sections.push(
@@ -56,6 +60,21 @@ function buildPrompt(body) {
   )
 
   return sections.join('\n\n')
+}
+
+function buildImagePart(dataUrl) {
+  const match = String(dataUrl || '').match(/^data:(.+?);base64,(.+)$/)
+
+  if (!match) {
+    return null
+  }
+
+  return {
+    inline_data: {
+      data: match[2],
+      mime_type: match[1],
+    },
+  }
 }
 
 export default async function handler(req, res) {
@@ -83,6 +102,7 @@ export default async function handler(req, res) {
   }
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}
+  const imagePart = buildImagePart(body?.brandProfile?.referenceImageData)
 
   if (!String(body.brief || '').trim()) {
     res.status(400).json({ ok: false, message: 'Informe o briefing do email.' })
@@ -99,6 +119,7 @@ export default async function handler(req, res) {
               {
                 text: buildPrompt(body),
               },
+              ...(imagePart ? [imagePart] : []),
             ],
             role: 'user',
           },

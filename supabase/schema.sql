@@ -91,9 +91,38 @@ create table if not exists public.company_brand_profiles (
   typography text not null default '',
   additional_context text not null default '',
   example_markup text not null default '',
+  reference_image_data text not null default '',
+  reference_image_name text not null default '',
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.company_brand_profiles
+  add column if not exists logo_url text not null default '';
+
+alter table public.company_brand_profiles
+  add column if not exists primary_color text not null default '';
+
+alter table public.company_brand_profiles
+  add column if not exists secondary_color text not null default '';
+
+alter table public.company_brand_profiles
+  add column if not exists background_color text not null default '';
+
+alter table public.company_brand_profiles
+  add column if not exists typography text not null default '';
+
+alter table public.company_brand_profiles
+  add column if not exists additional_context text not null default '';
+
+alter table public.company_brand_profiles
+  add column if not exists example_markup text not null default '';
+
+alter table public.company_brand_profiles
+  add column if not exists reference_image_data text not null default '';
+
+alter table public.company_brand_profiles
+  add column if not exists reference_image_name text not null default '';
 
 create index if not exists template_categories_company_id_idx
   on public.template_categories (company_id);
@@ -360,7 +389,9 @@ insert into public.company_brand_profiles (
   background_color,
   typography,
   additional_context,
-  example_markup
+  example_markup,
+  reference_image_data,
+  reference_image_name
 )
 select
   companies.id,
@@ -370,6 +401,8 @@ select
   companies.theme ->> 'bg',
   'Arial, Helvetica, sans-serif',
   coalesce(companies.note, ''),
+  '',
+  '',
   ''
 from public.companies
 on conflict (company_id) do update

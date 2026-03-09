@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState, startTransition } from 'react'
+﻿import { useDeferredValue, useEffect, useMemo, useState, startTransition } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   ChevronDown,
@@ -6,12 +6,14 @@ import {
   Copy,
   Eye,
   FilePenLine,
+  Filter,
   FolderOpen,
   LayoutTemplate,
   LogOut,
   Monitor,
   PanelsTopLeft,
   Plus,
+  Search,
   Save,
   Settings,
   Smartphone,
@@ -24,9 +26,18 @@ import {
 } from 'lucide-react'
 import { AuthScreen } from './components/AuthScreen'
 import { CategoryField } from './components/CategoryField'
+import { ColorTokenField } from './components/ColorTokenField'
 import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
-import { getCurrentSession, loadCurrentProfile, signInWithPassword, signOutCurrentUser, signUpWithPassword, subscribeToAuth } from './lib/auth-store'
+import {
+  getCurrentSession,
+  loadCurrentProfile,
+  signInWithPassword,
+  signOutCurrentUser,
+  signUpWithPassword,
+  subscribeToAuth,
+  updateCurrentUserPassword,
+} from './lib/auth-store'
 import { generateEmailMarkup } from './lib/ai'
 import { loadRemoteBrandProfiles, saveRemoteBrandProfile } from './lib/brand-profile-store'
 import { describeMarkup, inlineEmailDocument } from './lib/email'
@@ -43,9 +54,8 @@ import type { BrandProfileRecord } from './types/brand-profile'
 import type { ProfileRecord } from './types/profile'
 import type { TemplateRecord } from './types/template'
 
-type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections'
+type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections' | 'brand'
 type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
-type SectionView = SectionKind | 'identity'
 
 type DeviceConfig = {
   height: number
@@ -79,9 +89,13 @@ type BrandProfileFormState = {
   exampleMarkup: string
   logoUrl: string
   primaryColor: string
+  referenceImageData: string
+  referenceImageName: string
   secondaryColor: string
   typography: string
 }
+
+type TemplateDateFilter = 'all' | 'today' | '7d' | '30d'
 
 const STORAGE_KEYS = ['email-lab/templates-v2', 'email-lab/templates'] as const
 const SELECTED_COMPANY_KEY = 'email-lab/current-company'
@@ -146,6 +160,8 @@ function createBrandProfileForm(companyId: CompanyId): BrandProfileFormState {
     exampleMarkup: '',
     logoUrl: '',
     primaryColor: company.theme.primary,
+    referenceImageData: '',
+    referenceImageName: '',
     secondaryColor: company.theme.primarySoft,
     typography: 'Arial, Helvetica, sans-serif',
   }
@@ -158,6 +174,8 @@ function mapBrandProfileToForm(profile: BrandProfileRecord): BrandProfileFormSta
     exampleMarkup: profile.exampleMarkup,
     logoUrl: profile.logoUrl,
     primaryColor: profile.primaryColor,
+    referenceImageData: profile.referenceImageData,
+    referenceImageName: profile.referenceImageName,
     secondaryColor: profile.secondaryColor,
     typography: profile.typography,
   }
@@ -244,7 +262,7 @@ function loadSelectedCompany() {
   return stored && isCompanyId(stored) ? stored : DEFAULT_COMPANY_ID
 }
 
-function buildDuplicateName(name: string) {
+function buildDuplicarName(name: string) {
   return `${name} copy`
 }
 
@@ -268,11 +286,15 @@ export function App() {
   const [draft, setDraft] = useState<TemplateRecord | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [createForm, setCreateForm] = useState<TemplateFormState>(createBlankForm)
-  const [sectionView, setSectionView] = useState<SectionView>('header')
+  const [sectionView, setSectionView] = useState<SectionKind>('header')
   const [sectionModalOpen, setSectionModalOpen] = useState(false)
   const [sectionForm, setSectionForm] = useState<SectionFormState>(() => createSectionForm('header'))
   const [brandProfileForm, setBrandProfileForm] = useState<BrandProfileFormState>(() => createBrandProfileForm(DEFAULT_COMPANY_ID))
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null)
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [templateCategoryFilter, setTemplateCategoryFilter] = useState('all')
+  const [templateTypeFilter, setTemplateTypeFilter] = useState<'all' | 'html'>('all')
+  const [templateDateFilter, setTemplateDateFilter] = useState<TemplateDateFilter>('all')
   const [companyPickerOpen, setCompanyPickerOpen] = useState(false)
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile')
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
@@ -290,6 +312,10 @@ export function App() {
   const [isHydrating, setIsHydrating] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isSavingBrandProfile, setIsSavingBrandProfile] = useState(false)
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+  const [settingsPassword, setSettingsPassword] = useState('')
+  const [settingsPasswordConfirm, setSettingsPasswordConfirm] = useState('')
+  const [settingsError, setSettingsError] = useState<string | null>(null)
   const [inlinedDocument, setInlinedDocument] = useState('')
 
   const currentCompany = useMemo(
@@ -312,13 +338,40 @@ export function App() {
     [companyId, sortedTemplates],
   )
 
+  const filteredTemplates = useMemo(() => {
+    const now = Date.now()
+
+    return companyTemplates.filter((template) => {
+      const matchesSearch =
+        !templateSearch.trim() ||
+        [template.name, template.subject, template.category]
+          .join(' ')
+          .toLowerCase()
+          .includes(templateSearch.trim().toLowerCase())
+
+      const matchesCategory = templateCategoryFilter === 'all' || template.category === templateCategoryFilter
+      const matchesType = templateTypeFilter === 'all' || templateTypeFilter === 'html'
+
+      const updatedAt = new Date(template.updatedAt).getTime()
+      const matchesDate =
+        templateDateFilter === 'all' ||
+        (templateDateFilter === 'today' &&
+          new Date(template.updatedAt).toDateString() === new Date().toDateString()) ||
+        (templateDateFilter === '7d' && now - updatedAt <= 7 * 24 * 60 * 60 * 1000) ||
+        (templateDateFilter === '30d' && now - updatedAt <= 30 * 24 * 60 * 60 * 1000)
+
+      return matchesSearch && matchesCategory && matchesType && matchesDate
+    })
+  }, [
+    companyTemplates,
+    templateCategoryFilter,
+    templateDateFilter,
+    templateSearch,
+    templateTypeFilter,
+  ])
+
   const companySections = useMemo(
-    () =>
-      sections.filter(
-        (section) =>
-          section.companyId === companyId &&
-          section.kind === (sectionView === 'identity' ? 'header' : sectionView),
-      ),
+    () => sections.filter((section) => section.companyId === companyId && section.kind === sectionView),
     [companyId, sectionView, sections],
   )
 
@@ -370,7 +423,11 @@ export function App() {
     }
 
     if (view === 'sections') {
-      return ['Seções']
+      return ['Secoes']
+    }
+
+    if (view === 'brand') {
+      return ['Identidade visual']
     }
 
     if (view === 'preview') {
@@ -378,10 +435,10 @@ export function App() {
     }
 
     if (view === 'details') {
-      return ['Templates', draft?.name || 'Template', 'Details']
+      return ['Templates', draft?.name || 'Template', 'Detalhes']
     }
 
-    return ['Templates', draft?.name || 'Template', 'Edit Design']
+    return ['Templates', draft?.name || 'Template', 'Editar design']
   }, [draft?.name, view])
 
   function handleBreadcrumbClick(index: number) {
@@ -630,6 +687,15 @@ export function App() {
     })
   }
 
+  const handleOpenBrand = () => {
+    startTransition(() => {
+      setView('brand')
+      setDraft(null)
+      setActiveTemplateId(null)
+      setPreviewModalOpen(false)
+    })
+  }
+
   const handleSaveBrandProfile = async () => {
     const timestamp = new Date().toISOString()
     const nextProfile: BrandProfileRecord = {
@@ -641,6 +707,8 @@ export function App() {
       id: currentBrandProfile?.id ?? crypto.randomUUID(),
       logoUrl: brandProfileForm.logoUrl.trim(),
       primaryColor: brandProfileForm.primaryColor.trim(),
+      referenceImageData: brandProfileForm.referenceImageData,
+      referenceImageName: brandProfileForm.referenceImageName,
       secondaryColor: brandProfileForm.secondaryColor.trim(),
       typography: brandProfileForm.typography.trim(),
       updatedAt: timestamp,
@@ -652,6 +720,33 @@ export function App() {
     } catch {
       setNotice('Nao foi possivel salvar a identidade visual.')
     }
+  }
+
+  const handleBrandReferenceImageChange = async (file: File | null) => {
+    if (!file) {
+      setBrandProfileForm((current) => ({
+        ...current,
+        referenceImageData: '',
+        referenceImageName: '',
+      }))
+      return
+    }
+
+    const reader = new FileReader()
+
+    await new Promise<void>((resolve, reject) => {
+      reader.onload = () => {
+        setBrandProfileForm((current) => ({
+          ...current,
+          referenceImageData: typeof reader.result === 'string' ? reader.result : '',
+          referenceImageName: file.name,
+        }))
+        resolve()
+      }
+
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })
   }
 
   const handleOpenCreate = () => {
@@ -718,7 +813,7 @@ export function App() {
     })
   }
 
-  const handleContinueFromDetails = () => {
+  const handleContinuarFromDetails = () => {
     if (!draft || !draft.name.trim() || !draft.subject.trim() || !draft.category.trim()) {
       return
     }
@@ -965,6 +1060,37 @@ export function App() {
     setSettingsOpen(false)
   }
 
+  const handleUpdatePassword = async () => {
+    if (!settingsPassword || !settingsPasswordConfirm) {
+      setSettingsError('Preencha a nova senha e a confirmacao.')
+      return
+    }
+
+    if (settingsPassword !== settingsPasswordConfirm) {
+      setSettingsError('As senhas nao conferem.')
+      return
+    }
+
+    if (settingsPassword.length < 6) {
+      setSettingsError('A nova senha precisa ter pelo menos 6 caracteres.')
+      return
+    }
+
+    setIsUpdatingPassword(true)
+    setSettingsError(null)
+
+    try {
+      await updateCurrentUserPassword(settingsPassword)
+      setSettingsPassword('')
+      setSettingsPasswordConfirm('')
+      setNotice('Senha atualizada com sucesso.')
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Nao foi possivel atualizar a senha.')
+    } finally {
+      setIsUpdatingPassword(false)
+    }
+  }
+
   if (authLoading) {
     return <main className="auth-shell auth-shell--loading">Carregando...</main>
   }
@@ -1033,7 +1159,21 @@ export function App() {
               type="button"
             >
               <PanelsTopLeft size={18} />
-              <span>Seções</span>
+              <span>Secoes</span>
+            </button>
+          </nav>
+        </div>
+
+        <div className="sidebar__group">
+          <span className="sidebar__group-label">Marca</span>
+          <nav aria-label="Marca" className="sidebar__nav">
+            <button
+              className={`sidebar__nav-item ${view === 'brand' ? 'is-active' : ''}`.trim()}
+              onClick={handleOpenBrand}
+              type="button"
+            >
+              <Settings size={18} />
+              <span>Identidade visual</span>
             </button>
           </nav>
         </div>
@@ -1067,7 +1207,7 @@ export function App() {
             <div className="topbar__menu">
               <button className="topbar__menu-item" onClick={() => { setSettingsOpen(true); setProfileMenuOpen(false) }} type="button">
                 <Settings size={15} />
-                Configurações
+                Configuracoes
               </button>
               <button className="topbar__menu-item" onClick={handleSignOut} type="button">
                 <LogOut size={15} />
@@ -1091,9 +1231,53 @@ export function App() {
 
                 <button className="primary-button" onClick={handleOpenCreate} type="button">
                   <Plus size={16} />
-                  Create New Template
+                  Novo template
                 </button>
               </header>
+
+              <section className="filters-bar">
+                <label className="filters-search">
+                  <Search size={16} />
+                  <input
+                    onChange={(event) => setTemplateSearch(event.target.value)}
+                    placeholder="Buscar por nome, assunto ou categoria"
+                    value={templateSearch}
+                  />
+                </label>
+
+                <div className="filters-group">
+                  <label className="filters-select">
+                    <Filter size={16} />
+                    <select
+                      onChange={(event) => setTemplateCategoryFilter(event.target.value)}
+                      value={templateCategoryFilter}
+                    >
+                      <option value="all">Todas as categorias</option>
+                      {availableCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="filters-select">
+                    <select onChange={(event) => setTemplateTypeFilter(event.target.value as 'all' | 'html')} value={templateTypeFilter}>
+                      <option value="all">Todos os tipos</option>
+                      <option value="html">HTML</option>
+                    </select>
+                  </label>
+
+                  <label className="filters-select">
+                    <select onChange={(event) => setTemplateDateFilter(event.target.value as TemplateDateFilter)} value={templateDateFilter}>
+                      <option value="all">Qualquer data</option>
+                      <option value="today">Hoje</option>
+                      <option value="7d">Ultimos 7 dias</option>
+                      <option value="30d">Ultimos 30 dias</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
 
               {isHydrating ? (
                 <section className="empty-card">
@@ -1103,23 +1287,29 @@ export function App() {
               ) : companyTemplates.length === 0 ? (
                 <section className="empty-card">
                   <FolderOpen size={30} />
-                  <h3>You do not have any email templates yet</h3>
+                  <h3>Voce ainda nao tem templates de email</h3>
                   <p>Crie o primeiro template de {currentCompany.name} para comecar a trabalhar no editor.</p>
+                </section>
+              ) : filteredTemplates.length === 0 ? (
+                <section className="empty-card">
+                  <Filter size={30} />
+                  <h3>Nenhum template encontrado</h3>
+                  <p>Ajuste os filtros para encontrar um template desta empresa.</p>
                 </section>
               ) : (
                 <section className="table-card">
                   <table aria-label="Lista de templates" className="template-table">
                     <thead>
                       <tr>
-                        <th>Template name</th>
-                        <th>Type</th>
-                        <th>Category</th>
-                        <th>Last update</th>
+                        <th>Nome do template</th>
+                        <th>Tipo</th>
+                        <th>Categoria</th>
+                        <th>Ultima atualizacao</th>
                         <th aria-label="Acoes" />
                       </tr>
                     </thead>
                     <tbody>
-                      {companyTemplates.map((template) => (
+                      {filteredTemplates.map((template) => (
                         <tr key={template.id}>
                           <td>
                             <button className="table-link" onClick={() => handleOpenDetails(template)} type="button">
@@ -1154,7 +1344,7 @@ export function App() {
                                 className="icon-button"
                                 onClick={() =>
                                   setDuplicateState({
-                                    name: buildDuplicateName(template.name),
+                                    name: buildDuplicarName(template.name),
                                     template,
                                   })
                                 }
@@ -1187,14 +1377,14 @@ export function App() {
             <section className="page">
               <header className="page-heading">
                 <div>
-                  <h2>Seções</h2>
+                  <h2>Secoes</h2>
                   <p>{currentCompany.name}</p>
                 </div>
 
-                {sectionView !== 'identity' && <button className="primary-button" onClick={() => handleOpenSectionModal(sectionView)} type="button">
+                <button className="primary-button" onClick={() => handleOpenSectionModal(sectionView)} type="button">
                   <Plus size={16} />
-                  Nova seção
-                </button>}
+                  Nova secao
+                </button>
               </header>
 
               <div className="section-tabs">
@@ -1212,113 +1402,9 @@ export function App() {
                 >
                   Footer
                 </button>
-                <button
-                  className={sectionView === 'identity' ? 'is-active' : ''}
-                  onClick={() => setSectionView('identity')}
-                  type="button"
-                >
-                  Identidade visual
-                </button>
               </div>
 
-              {sectionView === 'identity' ? (
-                <section className="details-page__panel">
-                  <div className="details-panel">
-                    <div className="details-panel__header">
-                      <div>
-                        <h3>Contexto da marca</h3>
-                        <p>Esses dados alimentam a IA e ajudam a manter consistÃªncia visual da empresa.</p>
-                      </div>
-                      <button
-                        className="primary-button"
-                        disabled={isSavingBrandProfile}
-                        onClick={handleSaveBrandProfile}
-                        type="button"
-                      >
-                        <Save size={16} />
-                        {isSavingBrandProfile ? 'Salvando' : 'Salvar identidade'}
-                      </button>
-                    </div>
-
-                    <div className="brand-grid">
-                      <label className="field">
-                        <span>Link da logo</span>
-                        <input
-                          onChange={(event) => setBrandProfileForm((current) => ({ ...current, logoUrl: event.target.value }))}
-                          placeholder="https://..."
-                          value={brandProfileForm.logoUrl}
-                        />
-                      </label>
-
-                      <label className="field">
-                        <span>Tipografia</span>
-                        <input
-                          onChange={(event) => setBrandProfileForm((current) => ({ ...current, typography: event.target.value }))}
-                          placeholder="Arial, Helvetica, sans-serif"
-                          value={brandProfileForm.typography}
-                        />
-                      </label>
-
-                      <label className="field">
-                        <span>Cor primÃ¡ria</span>
-                        <input
-                          onChange={(event) =>
-                            setBrandProfileForm((current) => ({ ...current, primaryColor: event.target.value }))
-                          }
-                          placeholder="#000000"
-                          value={brandProfileForm.primaryColor}
-                        />
-                      </label>
-
-                      <label className="field">
-                        <span>Cor secundÃ¡ria</span>
-                        <input
-                          onChange={(event) =>
-                            setBrandProfileForm((current) => ({ ...current, secondaryColor: event.target.value }))
-                          }
-                          placeholder="#ffffff"
-                          value={brandProfileForm.secondaryColor}
-                        />
-                      </label>
-
-                      <label className="field">
-                        <span>Background</span>
-                        <input
-                          onChange={(event) =>
-                            setBrandProfileForm((current) => ({ ...current, backgroundColor: event.target.value }))
-                          }
-                          placeholder="#f5f5f5"
-                          value={brandProfileForm.backgroundColor}
-                        />
-                      </label>
-                    </div>
-
-                    <label className="field">
-                      <span>Diretrizes extras</span>
-                      <textarea
-                        className="section-textarea"
-                        onChange={(event) =>
-                          setBrandProfileForm((current) => ({ ...current, additionalContext: event.target.value }))
-                        }
-                        placeholder="Tom de voz, regras de layout, estilo de botÃ£o, uso de imagens, restriÃ§Ãµes etc."
-                        value={brandProfileForm.additionalContext}
-                      />
-                    </label>
-
-                    <label className="field">
-                      <span>Exemplo de email</span>
-                      <textarea
-                        className="section-textarea"
-                        onChange={(event) =>
-                          setBrandProfileForm((current) => ({ ...current, exampleMarkup: event.target.value }))
-                        }
-                        placeholder="Cole um HTML de exemplo para servir de referÃªncia Ã  IA."
-                        value={brandProfileForm.exampleMarkup}
-                      />
-                    </label>
-                  </div>
-                </section>
-              ) : companySections.length === 0 ? (
+              {companySections.length === 0 ? (
                 <section className="empty-card">
                   <FolderOpen size={30} />
                   <h3>Nenhuma secao cadastrada</h3>
@@ -1375,6 +1461,110 @@ export function App() {
             </section>
           )}
 
+          {view === 'brand' && (
+            <section className="page">
+              <header className="page-heading">
+                <div>
+                  <h2>Identidade visual</h2>
+                  <p>{currentCompany.name}</p>
+                </div>
+
+                <button
+                  className="primary-button"
+                  disabled={isSavingBrandProfile}
+                  onClick={handleSaveBrandProfile}
+                  type="button"
+                >
+                  <Save size={16} />
+                  {isSavingBrandProfile ? 'Salvando' : 'Salvar identidade'}
+                </button>
+              </header>
+
+              <section className="details-page__panel">
+                <div className="details-panel brand-panel">
+                  <div className="details-panel__header">
+                    <div>
+                      <h3>Contexto da marca</h3>
+                      <p>Esses dados alimentam a IA e ajudam a manter consistencia visual da empresa.</p>
+                    </div>
+                  </div>
+
+                  <div className="brand-grid">
+                    <label className="field">
+                      <span>Link da logo</span>
+                      <input
+                        onChange={(event) => setBrandProfileForm((current) => ({ ...current, logoUrl: event.target.value }))}
+                        placeholder="https://..."
+                        value={brandProfileForm.logoUrl}
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span>Tipografia</span>
+                      <input
+                        onChange={(event) => setBrandProfileForm((current) => ({ ...current, typography: event.target.value }))}
+                        placeholder="Arial, Helvetica, sans-serif"
+                        value={brandProfileForm.typography}
+                      />
+                    </label>
+
+                    <ColorTokenField
+                      label="Cor primaria"
+                      onChange={(value) => setBrandProfileForm((current) => ({ ...current, primaryColor: value }))}
+                      value={brandProfileForm.primaryColor}
+                    />
+
+                    <ColorTokenField
+                      label="Cor secundaria"
+                      onChange={(value) => setBrandProfileForm((current) => ({ ...current, secondaryColor: value }))}
+                      value={brandProfileForm.secondaryColor}
+                    />
+
+                    <ColorTokenField
+                      label="Background"
+                      onChange={(value) => setBrandProfileForm((current) => ({ ...current, backgroundColor: value }))}
+                      value={brandProfileForm.backgroundColor}
+                    />
+                  </div>
+
+                  <label className="field field--file">
+                    <span>Print de referencia para a IA</span>
+                    <input
+                      accept="image/*"
+                      onChange={(event) => void handleBrandReferenceImageChange(event.target.files?.[0] ?? null)}
+                      type="file"
+                    />
+                    <small>{brandProfileForm.referenceImageName || 'Nenhum arquivo enviado.'}</small>
+                  </label>
+
+                  <label className="field">
+                    <span>Diretrizes extras</span>
+                    <textarea
+                      className="section-textarea"
+                      onChange={(event) =>
+                        setBrandProfileForm((current) => ({ ...current, additionalContext: event.target.value }))
+                      }
+                      placeholder="Tom de voz, regras de layout, estilo de botao, uso de imagens e restricoes."
+                      value={brandProfileForm.additionalContext}
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>Exemplo de email</span>
+                    <textarea
+                      className="section-textarea"
+                      onChange={(event) =>
+                        setBrandProfileForm((current) => ({ ...current, exampleMarkup: event.target.value }))
+                      }
+                      placeholder="Cole um HTML de exemplo para servir de referencia para a IA."
+                      value={brandProfileForm.exampleMarkup}
+                    />
+                  </label>
+                </div>
+              </section>
+            </section>
+          )}
+
           {view === 'details' && draft && (
             <section className="details-page">
               <div className="details-stack">
@@ -1420,7 +1610,7 @@ export function App() {
                         <button className="secondary-button" onClick={() => handleOpenPreview(draft)} type="button">
                           Preview
                         </button>
-                        <button className="primary-button" onClick={handleContinueFromDetails} type="button">
+                        <button className="primary-button" onClick={handleContinuarFromDetails} type="button">
                           Editar
                         </button>
                       </div>
@@ -1528,7 +1718,7 @@ export function App() {
 
               <footer className="bottom-bar">
                 <button className="secondary-button" onClick={() => setView('details')} type="button">
-                  Cancel
+                  Cancelar
                 </button>
                 <button className="secondary-button" onClick={handleCopyMarkup} type="button">
                   <Copy size={16} />
@@ -1536,9 +1726,9 @@ export function App() {
                 </button>
                 <button className="primary-button" disabled={!isDirty || isSaving} onClick={handleSaveDraft} type="button">
                   <Save size={16} />
-                  {isSaving ? 'Salvando' : 'Save'}
+                  {isSaving ? 'Salvando' : 'Salvar'}
                 </button>
-                <span className="bottom-bar__status">{isDirty ? 'Unsaved' : 'Saved'}</span>
+                <span className="bottom-bar__status">{isDirty ? 'Nao salvo' : 'Salvo'}</span>
               </footer>
             </section>
           )}
@@ -1550,7 +1740,7 @@ export function App() {
           <section aria-modal="true" className="modal-card modal-card--wide" role="dialog">
             <header className="modal-card__header">
               <div>
-                <h3>Template Details</h3>
+                <h3>Detalhes do template</h3>
                 <p>Preencha os dados principais e continue para o editor.</p>
               </div>
               <button aria-label="Fechar" className="icon-button" onClick={() => setCreateModalOpen(false)} type="button">
@@ -1560,7 +1750,7 @@ export function App() {
 
             <div className="modal-card__body">
               <label className="field">
-                <span>Template name *</span>
+                <span>Nome do template *</span>
                 <input
                   autoFocus
                   onChange={(event) =>
@@ -1574,7 +1764,7 @@ export function App() {
               </label>
 
               <label className="field">
-                <span>Subject *</span>
+                <span>Assunto *</span>
                 <input
                   onChange={(event) =>
                     setCreateForm((current) => ({
@@ -1620,7 +1810,7 @@ export function App() {
 
             <footer className="modal-card__actions">
               <button className="secondary-button" onClick={() => setCreateModalOpen(false)} type="button">
-                Cancel
+                Cancelar
               </button>
               <button
                 className="primary-button"
@@ -1628,7 +1818,7 @@ export function App() {
                 onClick={handleCreateTemplate}
                 type="button"
               >
-                Continue
+                Continuar
               </button>
             </footer>
           </section>
@@ -1679,7 +1869,7 @@ export function App() {
 
             <footer className="modal-card__actions">
               <button className="secondary-button" onClick={() => setSectionModalOpen(false)} type="button">
-                Cancel
+                Cancelar
               </button>
               <button className="primary-button" onClick={handleSaveSection} type="button">
                 Salvar
@@ -1691,33 +1881,64 @@ export function App() {
 
       {settingsOpen && (
         <div className="modal-backdrop" role="presentation">
-          <section aria-modal="true" className="modal-card" role="dialog">
+          <section aria-modal="true" className="modal-card modal-card--settings" role="dialog">
             <header className="modal-card__header">
               <div>
-                <h3>Configurações</h3>
-                <p>Informações da conta autenticada.</p>
+                <h3>Configuracoes</h3>
+                <p>Informacoes da conta autenticada e seguranca de acesso.</p>
               </div>
               <button aria-label="Fechar" className="icon-button" onClick={() => setSettingsOpen(false)} type="button">
                 <X size={16} />
               </button>
             </header>
 
-            <div className="modal-card__body">
-              <div className="ai-summary">
-                <div>
+            <div className="modal-card__body modal-card__body--settings">
+              <div className="settings-grid">
+                <label className="field">
                   <span>Nome</span>
-                  <strong>{currentUserName}</strong>
-                </div>
-                <div>
+                  <input disabled value={currentUserName} />
+                </label>
+                <label className="field">
                   <span>E-mail</span>
-                  <strong>{currentUserEmail}</strong>
+                  <input disabled value={currentUserEmail} />
+                </label>
+              </div>
+
+              <div className="settings-password">
+                <div>
+                  <h4>Alterar senha</h4>
+                  <p>Defina uma nova senha para esta conta corporativa.</p>
                 </div>
+
+                <div className="settings-grid">
+                  <label className="field">
+                    <span>Nova senha</span>
+                    <input
+                      onChange={(event) => setSettingsPassword(event.target.value)}
+                      type="password"
+                      value={settingsPassword}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Confirmar nova senha</span>
+                    <input
+                      onChange={(event) => setSettingsPasswordConfirm(event.target.value)}
+                      type="password"
+                      value={settingsPasswordConfirm}
+                    />
+                  </label>
+                </div>
+
+                {settingsError && <div className="auth-card__error">{settingsError}</div>}
               </div>
             </div>
 
             <footer className="modal-card__actions">
               <button className="secondary-button" onClick={() => setSettingsOpen(false)} type="button">
                 Fechar
+              </button>
+              <button className="secondary-button" disabled={isUpdatingPassword} onClick={handleUpdatePassword} type="button">
+                {isUpdatingPassword ? 'Atualizando...' : 'Salvar nova senha'}
               </button>
               <button className="danger-button" onClick={handleSignOut} type="button">
                 <LogOut size={16} />
@@ -1734,7 +1955,7 @@ export function App() {
             <header className="modal-card__header">
               <div>
                 <h3>Criar com IA</h3>
-                <p>Descreva o email e gere o HTML usando Gemini com base opcional de header e footer.</p>
+                <p>Descreva o email. O prompt base fica no backend e usa a identidade visual, exemplos e favoritos desta empresa.</p>
               </div>
               <button aria-label="Fechar" className="icon-button" onClick={() => setAiModalOpen(false)} type="button">
                 <X size={16} />
@@ -1747,7 +1968,7 @@ export function App() {
                 <textarea className="section-textarea" onChange={(event) => setAiPrompt(event.target.value)} value={aiPrompt} />
               </label>
 
-              <div className="ai-options">
+              <div className="ai-options ai-options--compact">
                 <label className="ai-option">
                   <input
                     checked={aiUseFavoriteHeader}
@@ -1777,7 +1998,7 @@ export function App() {
 
               <div className="ai-brand-note">
                 <span>Identidade visual</span>
-                <strong>{currentBrandProfile ? 'Contexto salvo e ativo para esta empresa.' : 'Sem contexto salvo; a IA usarÃ¡ apenas o tema base da empresa.'}</strong>
+                <strong>{currentBrandProfile ? 'Contexto salvo e ativo para esta empresa.' : 'Sem contexto salvo; a IA usara apenas o tema base da empresa.'}</strong>
               </div>
 
               {aiError && <div className="auth-card__error">{aiError}</div>}
@@ -1864,7 +2085,7 @@ export function App() {
 
             <footer className="modal-card__actions">
               <button className="secondary-button" onClick={() => setSectionDeleteTarget(null)} type="button">
-                Cancel
+                Cancelar
               </button>
               <button className="danger-button" onClick={handleDeleteSection} type="button">
                 Excluir
@@ -1878,7 +2099,7 @@ export function App() {
         <div className="modal-backdrop" role="presentation">
           <section aria-modal="true" className="modal-card" role="dialog">
             <header className="modal-card__header">
-              <h3>Duplicate template</h3>
+              <h3>Duplicar template</h3>
               <button aria-label="Fechar" className="icon-button" onClick={() => setDuplicateState(null)} type="button">
                 <X size={16} />
               </button>
@@ -1886,7 +2107,7 @@ export function App() {
 
             <div className="modal-card__body">
               <label className="field">
-                <span>New template name</span>
+                <span>Novo nome do template</span>
                 <input
                   autoFocus
                   onChange={(event) =>
@@ -1906,7 +2127,7 @@ export function App() {
 
             <footer className="modal-card__actions">
               <button className="secondary-button" onClick={() => setDuplicateState(null)} type="button">
-                Cancel
+                Cancelar
               </button>
               <button
                 className="primary-button"
@@ -1914,7 +2135,7 @@ export function App() {
                 onClick={handleDuplicate}
                 type="button"
               >
-                Duplicate
+                Duplicar
               </button>
             </footer>
           </section>
@@ -1925,7 +2146,7 @@ export function App() {
         <div className="modal-backdrop" role="presentation">
           <section aria-modal="true" className="modal-card" role="dialog">
             <header className="modal-card__header">
-              <h3>Delete template</h3>
+              <h3>Excluir template</h3>
               <button aria-label="Fechar" className="icon-button" onClick={() => setDeleteTarget(null)} type="button">
                 <X size={16} />
               </button>
@@ -1933,16 +2154,16 @@ export function App() {
 
             <div className="modal-card__body">
               <p>
-                Delete <strong>{deleteTarget.name}</strong>? Esta acao remove o template da lista atual.
+                Excluir <strong>{deleteTarget.name}</strong>? Esta acao remove o template da lista atual.
               </p>
             </div>
 
             <footer className="modal-card__actions">
               <button className="secondary-button" onClick={() => setDeleteTarget(null)} type="button">
-                Cancel
+                Cancelar
               </button>
               <button className="danger-button" disabled={isSaving} onClick={handleDeleteTemplate} type="button">
-                Delete
+                Excluir
               </button>
             </footer>
           </section>

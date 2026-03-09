@@ -66,6 +66,10 @@ function buildPrompt(input: GenerateEmailMarkupInput) {
     if (input.brandProfile.exampleMarkup.trim()) {
       sections.push(`Exemplo de email da marca:\n${input.brandProfile.exampleMarkup}`)
     }
+
+    if (input.brandProfile.referenceImageName.trim()) {
+      sections.push(`Imagem de referencia enviada: ${input.brandProfile.referenceImageName}`)
+    }
   }
 
   return sections.join('\n\n')

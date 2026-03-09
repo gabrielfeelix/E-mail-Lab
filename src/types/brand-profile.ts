@@ -9,6 +9,8 @@ export type BrandProfileRecord = {
   id: string
   logoUrl: string
   primaryColor: string
+  referenceImageData: string
+  referenceImageName: string
   secondaryColor: string
   typography: string
   updatedAt: string
