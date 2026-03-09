@@ -51,6 +51,7 @@ import { describeMarkup, inlineEmailDocument } from './lib/email'
 import { deleteRemoteSection, loadRemoteSections, saveRemoteSection } from './lib/section-store'
 import { sendTestEmail } from './lib/send-test'
 import { loadRemoteTemplateVariables } from './lib/template-variable-store'
+import { sanitizeSingleLineText } from './lib/plain-text'
 import {
   buildCategoryMap,
   deleteRemoteTemplate,
@@ -210,13 +211,13 @@ function createDraft(template: TemplateFormState, companyId: CompanyId, markup =
   const timestamp = new Date().toISOString()
 
   return {
-    category: template.category.trim(),
+    category: sanitizeSingleLineText(template.category),
     companyId,
     createdAt: timestamp,
     id: crypto.randomUUID(),
     markup,
-    name: template.name.trim(),
-    subject: template.subject.trim(),
+    name: sanitizeSingleLineText(template.name),
+    subject: sanitizeSingleLineText(template.subject),
     updatedAt: timestamp,
   }
 }
@@ -225,7 +226,10 @@ function normalizeTemplate(record: Partial<TemplateRecord>): TemplateRecord {
   const timestamp = typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
 
   return {
-    category: typeof record.category === 'string' && record.category.trim() ? record.category : 'Institucional',
+    category:
+      typeof record.category === 'string' && sanitizeSingleLineText(record.category)
+        ? sanitizeSingleLineText(record.category)
+        : 'Institucional',
     companyId:
       typeof record.companyId === 'string' && isCompanyId(record.companyId)
         ? record.companyId
@@ -233,8 +237,14 @@ function normalizeTemplate(record: Partial<TemplateRecord>): TemplateRecord {
     createdAt: typeof record.createdAt === 'string' ? record.createdAt : timestamp,
     id: typeof record.id === 'string' ? record.id : crypto.randomUUID(),
     markup: typeof record.markup === 'string' ? record.markup : '',
-    name: typeof record.name === 'string' && record.name.trim() ? record.name : 'template-sem-nome',
-    subject: typeof record.subject === 'string' && record.subject.trim() ? record.subject : 'Sem assunto',
+    name:
+      typeof record.name === 'string' && sanitizeSingleLineText(record.name)
+        ? sanitizeSingleLineText(record.name)
+        : 'template-sem-nome',
+    subject:
+      typeof record.subject === 'string' && sanitizeSingleLineText(record.subject)
+        ? sanitizeSingleLineText(record.subject)
+        : 'Sem assunto',
     updatedAt: timestamp,
   }
 }
@@ -1076,9 +1086,9 @@ export function App() {
       current
         ? {
             ...current,
-            category: current.category.trim(),
-            name: current.name.trim(),
-            subject: current.subject.trim(),
+            category: sanitizeSingleLineText(current.category),
+            name: sanitizeSingleLineText(current.name),
+            subject: sanitizeSingleLineText(current.subject),
           }
         : current,
     )
@@ -1093,9 +1103,9 @@ export function App() {
 
     const nextDraft: TemplateRecord = {
       ...draft,
-      category: draft.category.trim(),
-      name: draft.name.trim(),
-      subject: draft.subject.trim(),
+      category: sanitizeSingleLineText(draft.category),
+      name: sanitizeSingleLineText(draft.name),
+      subject: sanitizeSingleLineText(draft.subject),
       updatedAt: new Date().toISOString(),
     }
 
@@ -1116,7 +1126,7 @@ export function App() {
       return
     }
 
-    const nextName = duplicateState.name.trim()
+    const nextName = sanitizeSingleLineText(duplicateState.name)
 
     if (!nextName) {
       return

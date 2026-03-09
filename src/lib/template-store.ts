@@ -1,4 +1,5 @@
 import { companies, type CompanyId } from '../data/companies'
+import { sanitizeSingleLineText } from './plain-text'
 import { getSupabaseBrowserClient } from './supabase'
 import type { TemplateRecord } from '../types/template'
 import type { TemplateVersionRecord } from '../types/template-version'
@@ -38,26 +39,26 @@ function isCompanyId(value: string): value is CompanyId {
 
 function mapTemplateRow(row: TemplateRow): TemplateRecord {
   return {
-    category: row.category,
+    category: sanitizeSingleLineText(row.category),
     companyId: isCompanyId(row.company_id) ? row.company_id : 'pcyes',
     createdAt: row.created_at,
     id: row.id,
     markup: row.markup,
-    name: row.name,
-    subject: row.subject,
+    name: sanitizeSingleLineText(row.name),
+    subject: sanitizeSingleLineText(row.subject),
     updatedAt: row.updated_at,
   }
 }
 
 function mapTemplateVersionRow(row: TemplateVersionRow): TemplateVersionRecord {
   return {
-    category: row.category,
+    category: sanitizeSingleLineText(row.category),
     companyId: isCompanyId(row.company_id) ? row.company_id : 'pcyes',
     createdAt: row.created_at,
     id: row.id,
     markup: row.markup,
-    name: row.name,
-    subject: row.subject,
+    name: sanitizeSingleLineText(row.name),
+    subject: sanitizeSingleLineText(row.subject),
     templateId: row.template_id,
     versionNumber: row.version_number,
   }
@@ -119,7 +120,7 @@ async function ensureCategory(companyId: CompanyId, category: string) {
     return null
   }
 
-  const categoryName = category.trim()
+  const categoryName = sanitizeSingleLineText(category)
 
   if (!categoryName) {
     return null
@@ -197,14 +198,14 @@ export async function saveRemoteTemplate(template: TemplateRecord) {
 
   const categoryId = await ensureCategory(template.companyId, template.category)
   const payload = {
-    category: template.category.trim(),
+    category: sanitizeSingleLineText(template.category),
     category_id: categoryId,
     company_id: template.companyId,
     created_at: template.createdAt,
     id: template.id,
     markup: template.markup,
-    name: template.name.trim(),
-    subject: template.subject.trim(),
+    name: sanitizeSingleLineText(template.name),
+    subject: sanitizeSingleLineText(template.subject),
     updated_at: template.updatedAt,
   }
 
