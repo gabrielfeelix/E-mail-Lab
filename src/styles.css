@@ -99,6 +99,7 @@ button {
 
 .account-card,
 .company-card {
+  position: relative;
   display: grid;
   gap: 8px;
   margin: 0;
@@ -145,17 +146,40 @@ button {
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.company-card__control select {
-  width: 100%;
-  border: 0;
-  background: transparent;
   color: #ffffff;
-  appearance: none;
+  text-align: left;
 }
 
-.company-card__control select:focus {
+.company-card__menu {
+  position: absolute;
+  top: calc(100% - 6px);
+  left: 14px;
+  right: 14px;
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: #131c2d;
+  box-shadow: 0 20px 36px rgba(0, 0, 0, 0.34);
+}
+
+.company-card__option {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: #edf4ff;
+  text-align: left;
+}
+
+.company-card__option:hover,
+.company-card__option:focus-visible,
+.company-card__option.is-active {
+  background: rgba(79, 141, 247, 0.18);
+  border-color: rgba(79, 141, 247, 0.26);
   outline: none;
 }
 
@@ -479,6 +503,12 @@ button {
   border-color: rgba(180, 35, 24, 0.18);
 }
 
+.icon-button.is-favorite {
+  color: #f59e0b;
+  background: #fff7e8;
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
 .details-page {
   display: grid;
   grid-template-columns: minmax(0, 1080px);
@@ -555,6 +585,29 @@ button {
 .details-panel__header h3 {
   margin: 0;
   font-size: 1.28rem;
+}
+
+.section-tabs {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+
+.section-tabs button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.section-tabs button.is-active {
+  background: #ffffff;
+  color: var(--ink);
+  border-color: var(--border);
 }
 
 .details-list {
@@ -771,9 +824,9 @@ button {
 
 .gmail-preview--desktop {
   background:
-    radial-gradient(circle at 12% 18%, rgba(231, 221, 255, 0.9), transparent 18%),
-    radial-gradient(circle at 86% 8%, rgba(244, 239, 255, 0.9), transparent 16%),
-    linear-gradient(180deg, #f2effb 0%, #e9edf7 100%);
+    radial-gradient(circle at 12% 18%, rgba(205, 190, 244, 0.72), transparent 18%),
+    radial-gradient(circle at 86% 8%, rgba(225, 218, 244, 0.58), transparent 16%),
+    linear-gradient(180deg, #ddd6f0 0%, #d7dff0 100%);
 }
 
 .gmail-preview__chrome {
@@ -1149,6 +1202,45 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+}
+
+.section-textarea {
+  width: 100%;
+  min-height: 220px;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  resize: vertical;
+}
+
+.field--checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.field--checkbox input {
+  width: 18px;
+  height: 18px;
+}
+
+.ai-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ai-summary div {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+
+.ai-summary span {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .modal-card__header,

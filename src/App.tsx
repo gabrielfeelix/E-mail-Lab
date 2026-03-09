@@ -8,9 +8,12 @@ import {
   FolderOpen,
   LayoutTemplate,
   Monitor,
+  PanelsTopLeft,
   Plus,
   Save,
   Smartphone,
+  Sparkles,
+  Star,
   TabletSmartphone,
   Trash2,
   UserRound,
@@ -21,6 +24,7 @@ import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
 import { sampleMarkup } from './data/presets'
 import { describeMarkup, inlineEmailDocument } from './lib/email'
+import { deleteRemoteSection, loadRemoteSections, saveRemoteSection } from './lib/section-store'
 import {
   buildCategoryMap,
   deleteRemoteTemplate,
@@ -28,9 +32,10 @@ import {
   loadRemoteWorkspace,
   saveRemoteTemplate,
 } from './lib/template-store'
+import type { SectionKind, SectionRecord } from './types/section'
 import type { TemplateRecord } from './types/template'
 
-type AppView = 'templates' | 'details' | 'editor' | 'preview'
+type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections'
 type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
 
 type DeviceConfig = {
@@ -49,6 +54,13 @@ type TemplateFormState = {
   category: string
   name: string
   subject: string
+}
+
+type SectionFormState = {
+  isFavorite: boolean
+  kind: SectionKind
+  markup: string
+  name: string
 }
 
 const STORAGE_KEYS = ['email-lab/templates-v2', 'email-lab/templates'] as const
@@ -94,6 +106,15 @@ function createBlankForm(): TemplateFormState {
     category: '',
     name: '',
     subject: '',
+  }
+}
+
+function createSectionForm(kind: SectionKind): SectionFormState {
+  return {
+    isFavorite: false,
+    kind,
+    markup: '',
+    name: '',
   }
 }
 
@@ -172,6 +193,7 @@ function buildDuplicateName(name: string) {
 export function App() {
   const [initialTemplates] = useState<TemplateRecord[]>(() => loadLocalTemplates())
   const [templates, setTemplates] = useState<TemplateRecord[]>(initialTemplates)
+  const [sections, setSections] = useState<SectionRecord[]>([])
   const [categoryMap, setCategoryMap] = useState<Map<CompanyId, string[]>>(() =>
     buildCategoryMap([], initialTemplates),
   )
@@ -181,10 +203,18 @@ export function App() {
   const [draft, setDraft] = useState<TemplateRecord | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [createForm, setCreateForm] = useState<TemplateFormState>(createBlankForm)
+  const [sectionKind, setSectionKind] = useState<SectionKind>('header')
+  const [sectionModalOpen, setSectionModalOpen] = useState(false)
+  const [sectionForm, setSectionForm] = useState<SectionFormState>(() => createSectionForm('header'))
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null)
+  const [companyPickerOpen, setCompanyPickerOpen] = useState(false)
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile')
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [duplicateState, setDuplicateState] = useState<DuplicateState | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TemplateRecord | null>(null)
+  const [sectionDeleteTarget, setSectionDeleteTarget] = useState<SectionRecord | null>(null)
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
   const [copied, setCopied] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [isHydrating, setIsHydrating] = useState(true)
@@ -207,6 +237,21 @@ export function App() {
   const companyTemplates = useMemo(
     () => sortedTemplates.filter((template) => template.companyId === companyId),
     [companyId, sortedTemplates],
+  )
+
+  const companySections = useMemo(
+    () => sections.filter((section) => section.companyId === companyId && section.kind === sectionKind),
+    [companyId, sectionKind, sections],
+  )
+
+  const favoriteHeader = useMemo(
+    () => sections.find((section) => section.companyId === companyId && section.kind === 'header' && section.isFavorite) ?? null,
+    [companyId, sections],
+  )
+
+  const favoriteFooter = useMemo(
+    () => sections.find((section) => section.companyId === companyId && section.kind === 'footer' && section.isFavorite) ?? null,
+    [companyId, sections],
   )
 
   const savedTemplate = useMemo(
@@ -239,6 +284,10 @@ export function App() {
   const breadcrumbs = useMemo(() => {
     if (view === 'templates') {
       return ['Templates']
+    }
+
+    if (view === 'sections') {
+      return ['Seções']
     }
 
     if (view === 'preview') {
@@ -277,7 +326,7 @@ export function App() {
 
     async function hydrateWorkspace() {
       try {
-        const remote = await loadRemoteWorkspace()
+        const [remote, remoteSections] = await Promise.all([loadRemoteWorkspace(), loadRemoteSections()])
         let nextTemplates = remote.templates
 
         if (remote.templates.length === 0 && initialTemplates.length > 0) {
@@ -293,6 +342,7 @@ export function App() {
 
         setTemplates(nextTemplates)
         setCategoryMap(buildCategoryMap(remote.categories, nextTemplates))
+        setSections(remoteSections)
       } catch {
         if (!cancelled) {
           setNotice('Supabase indisponivel. Mantendo os dados locais nesta sessao.')
@@ -378,6 +428,24 @@ export function App() {
     }
   }
 
+  const persistSection = async (section: SectionRecord) => {
+    setIsSaving(true)
+
+    try {
+      const saved = await saveRemoteSection(section)
+      setSections((current) => {
+        const next = current.filter(
+          (item) => !(item.companyId === saved.companyId && item.kind === saved.kind && item.isFavorite && item.id !== saved.id && saved.isFavorite),
+        )
+        const exists = next.some((item) => item.id === saved.id)
+        return exists ? next.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...next]
+      })
+      return saved
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const handleSelectCompany = (nextCompanyId: CompanyId) => {
     if (nextCompanyId === companyId) {
       return
@@ -403,9 +471,34 @@ export function App() {
     })
   }
 
+  const handleOpenSections = () => {
+    startTransition(() => {
+      setView('sections')
+      setDraft(null)
+      setActiveTemplateId(null)
+      setPreviewModalOpen(false)
+    })
+  }
+
   const handleOpenCreate = () => {
     setCreateForm(createBlankForm())
     setCreateModalOpen(true)
+  }
+
+  const handleOpenSectionModal = (kind: SectionKind, section?: SectionRecord) => {
+    setSectionKind(kind)
+    setEditingSectionId(section?.id ?? null)
+    setSectionForm(
+      section
+        ? {
+            isFavorite: section.isFavorite,
+            kind: section.kind,
+            markup: section.markup,
+            name: section.name,
+          }
+        : createSectionForm(kind),
+    )
+    setSectionModalOpen(true)
   }
 
   const handleCreateTemplate = async () => {
@@ -542,6 +635,81 @@ export function App() {
     }
   }
 
+  const handleSaveSection = async () => {
+    if (!sectionForm.name.trim() || !sectionForm.markup.trim()) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const section: SectionRecord = {
+      companyId,
+      createdAt: timestamp,
+      id: editingSectionId ?? crypto.randomUUID(),
+      isFavorite: sectionForm.isFavorite,
+      kind: sectionForm.kind,
+      markup: sectionForm.markup,
+      name: sectionForm.name.trim(),
+      updatedAt: timestamp,
+    }
+
+    const existing = sections.find((item) => item.id === section.id)
+
+    try {
+      await persistSection(existing ? { ...existing, ...section, createdAt: existing.createdAt } : section)
+      setSectionModalOpen(false)
+      setEditingSectionId(null)
+      setNotice('Secao salva.')
+    } catch {
+      setNotice('Nao foi possivel salvar a secao.')
+    }
+  }
+
+  const handleDeleteSection = async () => {
+    if (!sectionDeleteTarget) {
+      return
+    }
+
+    try {
+      await deleteRemoteSection(sectionDeleteTarget.id)
+      setSections((current) => current.filter((item) => item.id !== sectionDeleteTarget.id))
+      setSectionDeleteTarget(null)
+      setNotice('Secao excluida.')
+    } catch {
+      setNotice('Nao foi possivel excluir a secao.')
+    }
+  }
+
+  const handleToggleFavoriteSection = async (section: SectionRecord) => {
+    try {
+      await persistSection({
+        ...section,
+        isFavorite: !section.isFavorite,
+        updatedAt: new Date().toISOString(),
+      })
+      setNotice(section.isFavorite ? 'Favorito removido.' : 'Secao favoritada.')
+    } catch {
+      setNotice('Nao foi possivel atualizar o favorito.')
+    }
+  }
+
+  const handleCopyAiPrompt = async () => {
+    const prompt = [
+      `Empresa: ${currentCompany.name}`,
+      `Objetivo do email: ${aiPrompt.trim() || 'Nao informado.'}`,
+      `Use header favorito: ${favoriteHeader ? favoriteHeader.name : 'nao'}`,
+      favoriteHeader ? `Markup do header:\n${favoriteHeader.markup}` : '',
+      `Use footer favorito: ${favoriteFooter ? favoriteFooter.name : 'nao'}`,
+      favoriteFooter ? `Markup do footer:\n${favoriteFooter.markup}` : '',
+      'Gere um email HTML completo, pronto para email marketing, com CSS inline-safe e mantendo header e footer como base.',
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+
+    await navigator.clipboard.writeText(prompt)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1400)
+  }
+
   const handleCopyMarkup = async () => {
     if (!draft) {
       return
@@ -583,23 +751,30 @@ export function App() {
           </span>
         </div>
 
-        <label className="company-card">
+        <div className="company-card">
           <span className="company-card__label">Empresa</span>
-          <div className="company-card__control">
-            <select
-              aria-label="Selecionar empresa"
-              onChange={(event) => handleSelectCompany(event.target.value as CompanyId)}
-              value={companyId}
-            >
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.name}
-                </option>
-              ))}
-            </select>
+          <button className="company-card__control" onClick={() => setCompanyPickerOpen((current) => !current)} type="button">
+            <span>{currentCompany.name}</span>
             <ChevronDown size={16} />
-          </div>
-        </label>
+          </button>
+          {companyPickerOpen && (
+            <div className="company-card__menu">
+              {companies.map((company) => (
+                <button
+                  className={`company-card__option ${company.id === companyId ? 'is-active' : ''}`.trim()}
+                  key={company.id}
+                  onClick={() => {
+                    handleSelectCompany(company.id)
+                    setCompanyPickerOpen(false)
+                  }}
+                  type="button"
+                >
+                  {company.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="sidebar__group">
           <span className="sidebar__group-label">Workspace</span>
@@ -611,6 +786,14 @@ export function App() {
             >
               <LayoutTemplate size={18} />
               <span>Templates</span>
+            </button>
+            <button
+              className={`sidebar__nav-item ${view === 'sections' ? 'is-active' : ''}`.trim()}
+              onClick={handleOpenSections}
+              type="button"
+            >
+              <PanelsTopLeft size={18} />
+              <span>Seções</span>
             </button>
           </nav>
         </div>
@@ -746,6 +929,94 @@ export function App() {
             </section>
           )}
 
+          {view === 'sections' && (
+            <section className="page">
+              <header className="page-heading">
+                <div>
+                  <h2>Seções</h2>
+                  <p>{currentCompany.name}</p>
+                </div>
+
+                <button className="primary-button" onClick={() => handleOpenSectionModal(sectionKind)} type="button">
+                  <Plus size={16} />
+                  Nova seção
+                </button>
+              </header>
+
+              <div className="section-tabs">
+                <button
+                  className={sectionKind === 'header' ? 'is-active' : ''}
+                  onClick={() => setSectionKind('header')}
+                  type="button"
+                >
+                  Header
+                </button>
+                <button
+                  className={sectionKind === 'footer' ? 'is-active' : ''}
+                  onClick={() => setSectionKind('footer')}
+                  type="button"
+                >
+                  Footer
+                </button>
+              </div>
+
+              {companySections.length === 0 ? (
+                <section className="empty-card">
+                  <FolderOpen size={30} />
+                  <h3>Nenhuma secao cadastrada</h3>
+                  <p>Crie {sectionKind === 'header' ? 'headers' : 'footers'} reutilizaveis para acelerar os emails.</p>
+                </section>
+              ) : (
+                <section className="table-card">
+                  <table aria-label="Lista de secoes" className="template-table">
+                    <thead>
+                      <tr>
+                        <th>Nome</th>
+                        <th>Tipo</th>
+                        <th>Favorito</th>
+                        <th>Atualizado</th>
+                        <th aria-label="Acoes" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {companySections.map((section) => (
+                        <tr key={section.id}>
+                          <td>{section.name}</td>
+                          <td>{section.kind === 'header' ? 'Header' : 'Footer'}</td>
+                          <td>
+                            <button
+                              className={`icon-button ${section.isFavorite ? 'is-favorite' : ''}`.trim()}
+                              onClick={() => handleToggleFavoriteSection(section)}
+                              title="Favoritar"
+                              type="button"
+                            >
+                              <Star size={16} />
+                            </button>
+                          </td>
+                          <td>{dateFormatter.format(new Date(section.updatedAt))}</td>
+                          <td>
+                            <div className="icon-actions">
+                              <button className="icon-button" onClick={() => handleOpenSectionModal(section.kind, section)} type="button">
+                                <FilePenLine size={16} />
+                              </button>
+                              <button
+                                className="icon-button icon-button--danger"
+                                onClick={() => setSectionDeleteTarget(section)}
+                                type="button"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+              )}
+            </section>
+          )}
+
           {view === 'details' && draft && (
             <section className="details-page">
               <div className="details-stack">
@@ -821,6 +1092,10 @@ export function App() {
                     <div className="editor-column__tabs">
                       <button className="is-active" type="button">
                         Code Editor
+                      </button>
+                      <button onClick={() => setAiModalOpen(true)} type="button">
+                        <Sparkles size={14} />
+                        Criar com IA
                       </button>
                     </div>
                     <p className="editor-column__intro">Cole e edite o HTML do template.</p>
@@ -984,6 +1259,104 @@ export function App() {
         </div>
       )}
 
+      {sectionModalOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card modal-card--wide" role="dialog">
+            <header className="modal-card__header">
+              <div>
+                <h3>{sectionForm.kind === 'header' ? 'Header' : 'Footer'}</h3>
+                <p>Cadastre uma secao reutilizavel para esta empresa.</p>
+              </div>
+              <button aria-label="Fechar" className="icon-button" onClick={() => setSectionModalOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__body">
+              <label className="field">
+                <span>Nome *</span>
+                <input
+                  autoFocus
+                  onChange={(event) => setSectionForm((current) => ({ ...current, name: event.target.value }))}
+                  value={sectionForm.name}
+                />
+              </label>
+
+              <label className="field">
+                <span>Markup *</span>
+                <textarea
+                  className="section-textarea"
+                  onChange={(event) => setSectionForm((current) => ({ ...current, markup: event.target.value }))}
+                  value={sectionForm.markup}
+                />
+              </label>
+
+              <label className="field field--checkbox">
+                <input
+                  checked={sectionForm.isFavorite}
+                  onChange={(event) => setSectionForm((current) => ({ ...current, isFavorite: event.target.checked }))}
+                  type="checkbox"
+                />
+                <span>Favoritar esta secao</span>
+              </label>
+            </div>
+
+            <footer className="modal-card__actions">
+              <button className="secondary-button" onClick={() => setSectionModalOpen(false)} type="button">
+                Cancel
+              </button>
+              <button className="primary-button" onClick={handleSaveSection} type="button">
+                Salvar
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {aiModalOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card modal-card--wide" role="dialog">
+            <header className="modal-card__header">
+              <div>
+                <h3>Criar com IA</h3>
+                <p>Preparacao do prompt para o Gemini usando header e footer favoritos.</p>
+              </div>
+              <button aria-label="Fechar" className="icon-button" onClick={() => setAiModalOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__body">
+              <label className="field">
+                <span>Briefing do e-mail</span>
+                <textarea className="section-textarea" onChange={(event) => setAiPrompt(event.target.value)} value={aiPrompt} />
+              </label>
+
+              <div className="ai-summary">
+                <div>
+                  <span>Header favorito</span>
+                  <strong>{favoriteHeader?.name ?? 'Nenhum definido'}</strong>
+                </div>
+                <div>
+                  <span>Footer favorito</span>
+                  <strong>{favoriteFooter?.name ?? 'Nenhum definido'}</strong>
+                </div>
+              </div>
+            </div>
+
+            <footer className="modal-card__actions">
+              <button className="secondary-button" onClick={() => setAiModalOpen(false)} type="button">
+                Fechar
+              </button>
+              <button className="primary-button" onClick={handleCopyAiPrompt} type="button">
+                <Copy size={16} />
+                {copied ? 'Prompt copiado' : 'Copiar prompt'}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
       {previewModalOpen && draft && (
         <div className="modal-backdrop" role="presentation">
           <section aria-modal="true" className="modal-card modal-card--preview" role="dialog">
@@ -1030,6 +1403,34 @@ export function App() {
                 viewportWidth={currentDevice.width}
               />
             </div>
+          </section>
+        </div>
+      )}
+
+      {sectionDeleteTarget && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card" role="dialog">
+            <header className="modal-card__header">
+              <h3>Excluir secao</h3>
+              <button aria-label="Fechar" className="icon-button" onClick={() => setSectionDeleteTarget(null)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__body">
+              <p>
+                Excluir <strong>{sectionDeleteTarget.name}</strong>?
+              </p>
+            </div>
+
+            <footer className="modal-card__actions">
+              <button className="secondary-button" onClick={() => setSectionDeleteTarget(null)} type="button">
+                Cancel
+              </button>
+              <button className="danger-button" onClick={handleDeleteSection} type="button">
+                Excluir
+              </button>
+            </footer>
           </section>
         </div>
       )}
