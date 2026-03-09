@@ -58,6 +58,7 @@ function PreviewCanvas({
         className="gmail-preview__canvas"
         style={{
           height: viewportHeight * scale,
+          width: viewportWidth * scale,
         }}
       >
         <iframe
@@ -83,7 +84,9 @@ function DesktopShell(props: Omit<GmailPreviewProps, 'mode'>) {
     <section className="gmail-preview gmail-preview--desktop">
       <header className="gmail-preview__chrome">
         <div className="gmail-preview__brand">
-          <span className="gmail-preview__logo">M</span>
+          <span className="gmail-preview__logo">
+            <span className="gmail-preview__logo-g">G</span>
+          </span>
           <span>Gmail</span>
         </div>
         <div className="gmail-preview__search">Pesquisar e-mail</div>
@@ -143,7 +146,7 @@ function MobileShell(props: Omit<GmailPreviewProps, 'mode'> & { compact?: boolea
   const { compact = false, senderAddress, senderName, sentAtLabel, srcDoc, subject, viewportHeight, viewportWidth } = props
 
   return (
-    <section className={`gmail-preview gmail-preview--mobile ${compact ? 'gmail-preview--tablet' : ''}`.trim()}>
+      <section className={`gmail-preview gmail-preview--mobile ${compact ? 'gmail-preview--tablet' : ''}`.trim()}>
       <div className="gmail-mobile__statusbar">
         <span>13:08</span>
         <span className="gmail-mobile__statusicons">Wi-Fi 68</span>

@@ -64,19 +64,19 @@ const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
 
 const devices = {
   desktop: {
-    height: 920,
+    height: 900,
     icon: Monitor,
     label: 'Notebook',
-    width: 1280,
+    width: 1440,
   },
   mobile: {
-    height: 740,
+    height: 932,
     icon: Smartphone,
     label: 'Mobile',
-    width: 420,
+    width: 430,
   },
   tablet: {
-    height: 860,
+    height: 1180,
     icon: TabletSmartphone,
     label: 'Tablet',
     width: 820,
@@ -251,6 +251,17 @@ export function App() {
 
     return ['Templates', draft?.name || 'Template', 'Edit Design']
   }, [draft?.name, view])
+
+  function handleBreadcrumbClick(index: number) {
+    if (index === 0) {
+      handleOpenList()
+      return
+    }
+
+    if (index === 1 && draft && (view === 'editor' || view === 'details')) {
+      handleOpenDetails(draft)
+    }
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -546,6 +557,7 @@ export function App() {
   const sentAtLabel = draft ? dateFormatter.format(new Date(draft.updatedAt)) : dateFormatter.format(new Date())
   const handlePreviewDeviceChange = (deviceId: PreviewDevice) => {
     if (deviceId === 'desktop') {
+      setPreviewDevice(deviceId)
       setPreviewModalOpen(true)
       return
     }
@@ -610,7 +622,14 @@ export function App() {
             {breadcrumbs.map((item, index) => (
               <span className="breadcrumb__item" key={`${item}-${index}`}>
                 {index > 0 && <ChevronRight size={14} />}
-                <span>{item}</span>
+                <button
+                  className={`breadcrumb__link ${index === breadcrumbs.length - 1 ? 'is-current' : ''}`.trim()}
+                  disabled={index === breadcrumbs.length - 1}
+                  onClick={() => handleBreadcrumbClick(index)}
+                  type="button"
+                >
+                  {item}
+                </button>
               </span>
             ))}
           </div>
