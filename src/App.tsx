@@ -31,6 +31,7 @@ import { AuthScreen } from './components/AuthScreen'
 import { CategoryField } from './components/CategoryField'
 import { ColorTokenField } from './components/ColorTokenField'
 import { GmailPreview } from './components/GmailPreview'
+import { MarkupEditor } from './components/MarkupEditor'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
 import { templateVariableGroups, type TemplateVariableGroup } from './data/template-variables'
 import {
@@ -2253,21 +2254,18 @@ export function App() {
                       </span>
                     </div>
 
-                    <textarea
-                      aria-label="Editor de markup do email"
-                      className="editor-textarea"
-                      ref={editorTextareaRef}
-                      onChange={(event) =>
+                    <MarkupEditor
+                      onChange={(value) =>
                         setDraft((current) =>
                           current
                             ? {
                                 ...current,
-                                markup: event.target.value,
+                                markup: value,
                               }
                             : current,
                         )
                       }
-                      spellCheck={false}
+                      textareaRef={editorTextareaRef}
                       value={draft.markup}
                     />
                   </div>
