@@ -6,6 +6,11 @@ type ProfileRow = {
   email: string
   full_name: string
   id: string
+  is_admin: boolean
+}
+
+type MembershipRow = {
+  company_id: string
 }
 
 function mapProfile(row: ProfileRow): ProfileRecord {
@@ -13,6 +18,7 @@ function mapProfile(row: ProfileRow): ProfileRecord {
     email: row.email,
     fullName: row.full_name,
     id: row.id,
+    isAdmin: Boolean(row.is_admin),
   }
 }
 
@@ -96,10 +102,21 @@ export async function updateCurrentUserPassword(password: string) {
 export async function loadCurrentProfile(userId: string) {
   const client = getSupabaseBrowserClient()
 
-  const result = await client.from('profiles').select('id, email, full_name').eq('id', userId).maybeSingle()
+  const result = await client.from('profiles').select('id, email, full_name, is_admin').eq('id', userId).maybeSingle()
   if (result.error) {
     throw result.error
   }
 
   return result.data ? mapProfile(result.data as ProfileRow) : null
+}
+
+export async function loadCurrentMembershipCompanyIds() {
+  const client = getSupabaseBrowserClient()
+
+  const result = await client.from('company_memberships').select('company_id')
+  if (result.error) {
+    throw result.error
+  }
+
+  return (result.data ?? []).map((row) => String((row as MembershipRow).company_id))
 }

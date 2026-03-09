@@ -23,9 +23,13 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null unique,
   full_name text not null,
+  is_admin boolean not null default false,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.profiles
+  add column if not exists is_admin boolean not null default false;
 
 create table if not exists public.company_memberships (
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -47,6 +51,27 @@ as $$
     where company_id = target_company_id
       and user_id = auth.uid()
   );
+$$;
+
+create or replace function public.is_workspace_admin()
+returns boolean
+language sql
+stable
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = auth.uid()
+      and is_admin = true
+  );
+$$;
+
+create or replace function public.can_access_company(target_company_id text)
+returns boolean
+language sql
+stable
+as $$
+  select public.is_workspace_admin() or public.is_company_member(target_company_id);
 $$;
 
 create table if not exists public.template_categories (
@@ -456,11 +481,20 @@ begin
   set
     email = excluded.email,
     full_name = excluded.full_name,
+    is_admin = (lower(excluded.email) = 'gabriel.barbosa@oderco.com.br'),
     updated_at = timezone('utc', now());
 
-  insert into public.company_memberships (user_id, company_id)
-  select new.id, companies.id
+  insert into public.company_memberships (user_id, company_id, role)
+  select
+    new.id,
+    companies.id,
+    case
+      when lower(new.email) = 'gabriel.barbosa@oderco.com.br' then 'admin'
+      else 'member'
+    end
   from public.companies
+  where lower(new.email) = 'gabriel.barbosa@oderco.com.br'
+    or companies.id = 'oderco'
   on conflict (user_id, company_id) do nothing;
 
   return new;
@@ -472,6 +506,117 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row
 execute function public.handle_new_user();
+
+update public.profiles
+set
+  is_admin = (lower(email) = 'gabriel.barbosa@oderco.com.br'),
+  updated_at = timezone('utc', now())
+where is_admin is distinct from (lower(email) = 'gabriel.barbosa@oderco.com.br');
+
+insert into public.company_memberships (user_id, company_id, role)
+select profiles.id, companies.id, 'admin'
+from public.profiles
+cross join public.companies
+where profiles.is_admin = true
+on conflict (user_id, company_id) do update
+set
+  role = excluded.role,
+  updated_at = timezone('utc', now());
+
+insert into public.company_memberships (user_id, company_id, role)
+select profiles.id, 'oderco', 'member'
+from public.profiles
+where profiles.is_admin = false
+on conflict (user_id, company_id) do nothing;
+
+create or replace function public.list_workspace_access()
+returns table (
+  user_id uuid,
+  email text,
+  full_name text,
+  is_admin boolean,
+  company_ids text[]
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_workspace_admin() then
+    raise exception 'Acesso negado';
+  end if;
+
+  return query
+  select
+    profiles.id,
+    profiles.email,
+    profiles.full_name,
+    profiles.is_admin,
+    coalesce(
+      array_agg(company_memberships.company_id order by company_memberships.company_id)
+        filter (where company_memberships.company_id is not null),
+      '{}'::text[]
+    ) as company_ids
+  from public.profiles
+  left join public.company_memberships
+    on company_memberships.user_id = profiles.id
+  group by profiles.id, profiles.email, profiles.full_name, profiles.is_admin
+  order by profiles.full_name, profiles.email;
+end;
+$$;
+
+create or replace function public.set_company_membership(
+  target_user_id uuid,
+  target_company_id text,
+  enabled boolean
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_is_admin boolean;
+begin
+  if not public.is_workspace_admin() then
+    raise exception 'Acesso negado';
+  end if;
+
+  select is_admin
+  into target_is_admin
+  from public.profiles
+  where id = target_user_id;
+
+  if target_is_admin is null then
+    raise exception 'Usuario nao encontrado';
+  end if;
+
+  if not exists (
+    select 1
+    from public.companies
+    where id = target_company_id
+  ) then
+    raise exception 'Empresa nao encontrada';
+  end if;
+
+  if target_is_admin then
+    raise exception 'Nao altere memberships de usuarios admin por esta tela';
+  end if;
+
+  if enabled then
+    insert into public.company_memberships (user_id, company_id, role)
+    values (target_user_id, target_company_id, 'member')
+    on conflict (user_id, company_id) do update
+    set
+      role = excluded.role,
+      updated_at = timezone('utc', now());
+  else
+    delete from public.company_memberships
+    where user_id = target_user_id
+      and company_id = target_company_id;
+  end if;
+end;
+$$;
 
 alter table public.profiles enable row level security;
 alter table public.company_memberships enable row level security;
@@ -489,6 +634,13 @@ for select
 to authenticated
 using (id = auth.uid());
 
+drop policy if exists "profiles admin read" on public.profiles;
+create policy "profiles admin read"
+on public.profiles
+for select
+to authenticated
+using (public.is_workspace_admin());
+
 drop policy if exists "profiles self write" on public.profiles;
 create policy "profiles self write"
 on public.profiles
@@ -502,89 +654,97 @@ create policy "memberships self read"
 on public.company_memberships
 for select
 to authenticated
-using (user_id = auth.uid());
+using (user_id = auth.uid() or public.is_workspace_admin());
+
+drop policy if exists "memberships admin write" on public.company_memberships;
+create policy "memberships admin write"
+on public.company_memberships
+for all
+to authenticated
+using (public.is_workspace_admin())
+with check (public.is_workspace_admin());
 
 drop policy if exists "member companies read" on public.companies;
 create policy "member companies read"
 on public.companies
 for select
 to authenticated
-using (public.is_company_member(id));
+using (public.can_access_company(id));
 
 drop policy if exists "member categories read" on public.template_categories;
 create policy "member categories read"
 on public.template_categories
 for select
 to authenticated
-using (public.is_company_member(company_id));
+using (public.can_access_company(company_id));
 
 drop policy if exists "member categories write" on public.template_categories;
 create policy "member categories write"
 on public.template_categories
 for all
 to authenticated
-using (public.is_company_member(company_id))
-with check (public.is_company_member(company_id));
+using (public.can_access_company(company_id))
+with check (public.can_access_company(company_id));
 
 drop policy if exists "member templates read" on public.email_templates;
 create policy "member templates read"
 on public.email_templates
 for select
 to authenticated
-using (public.is_company_member(company_id));
+using (public.can_access_company(company_id));
 
 drop policy if exists "member templates write" on public.email_templates;
 create policy "member templates write"
 on public.email_templates
 for all
 to authenticated
-using (public.is_company_member(company_id))
-with check (public.is_company_member(company_id));
+using (public.can_access_company(company_id))
+with check (public.can_access_company(company_id));
 
 drop policy if exists "member template versions read" on public.email_template_versions;
 create policy "member template versions read"
 on public.email_template_versions
 for select
 to authenticated
-using (public.is_company_member(company_id));
+using (public.can_access_company(company_id));
 
 drop policy if exists "member template versions write" on public.email_template_versions;
 create policy "member template versions write"
 on public.email_template_versions
 for all
 to authenticated
-using (public.is_company_member(company_id))
-with check (public.is_company_member(company_id));
+using (public.can_access_company(company_id))
+with check (public.can_access_company(company_id));
 
 drop policy if exists "member sections read" on public.email_sections;
 create policy "member sections read"
 on public.email_sections
 for select
 to authenticated
-using (public.is_company_member(company_id));
+using (public.can_access_company(company_id));
 
 drop policy if exists "member sections write" on public.email_sections;
 create policy "member sections write"
 on public.email_sections
 for all
 to authenticated
-using (public.is_company_member(company_id))
-with check (public.is_company_member(company_id));
+using (public.can_access_company(company_id))
+with check (public.can_access_company(company_id));
 
 drop policy if exists "member brand profiles read" on public.company_brand_profiles;
 create policy "member brand profiles read"
 on public.company_brand_profiles
 for select
 to authenticated
-using (public.is_company_member(company_id));
+using (public.can_access_company(company_id));
 
 drop policy if exists "member brand profiles write" on public.company_brand_profiles;
 create policy "member brand profiles write"
 on public.company_brand_profiles
 for all
 to authenticated
-using (public.is_company_member(company_id))
-with check (public.is_company_member(company_id));
+using (public.can_access_company(company_id))
+with check (public.can_access_company(company_id));
 
 comment on table public.companies is
   'Empresas/projetos do E-mail Lab com tema visual e nota opcional.';

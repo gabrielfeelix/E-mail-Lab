@@ -15,6 +15,7 @@ import {
   Plus,
   Search,
   Save,
+  Send,
   Settings,
   Smartphone,
   Sparkles,
@@ -22,6 +23,7 @@ import {
   TabletSmartphone,
   Trash2,
   UserRound,
+  Users,
   X,
 } from 'lucide-react'
 import { AuthScreen } from './components/AuthScreen'
@@ -31,6 +33,7 @@ import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
 import {
   getCurrentSession,
+  loadCurrentMembershipCompanyIds,
   loadCurrentProfile,
   signInWithPassword,
   signOutCurrentUser,
@@ -38,10 +41,12 @@ import {
   subscribeToAuth,
   updateCurrentUserPassword,
 } from './lib/auth-store'
+import { loadWorkspaceAccess, setWorkspaceCompanyAccess } from './lib/admin-access-store'
 import { generateEmailMarkup } from './lib/ai'
 import { loadRemoteBrandProfiles, saveRemoteBrandProfile } from './lib/brand-profile-store'
 import { describeMarkup, inlineEmailDocument } from './lib/email'
 import { deleteRemoteSection, loadRemoteSections, saveRemoteSection } from './lib/section-store'
+import { sendTestEmail } from './lib/send-test'
 import {
   buildCategoryMap,
   deleteRemoteTemplate,
@@ -52,11 +57,12 @@ import {
 } from './lib/template-store'
 import type { SectionKind, SectionRecord } from './types/section'
 import type { BrandProfileRecord } from './types/brand-profile'
+import type { AdminAccessRecord } from './types/admin-access'
 import type { ProfileRecord } from './types/profile'
 import type { TemplateRecord } from './types/template'
 import type { TemplateVersionRecord } from './types/template-version'
 
-type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections' | 'brand'
+type AppView = 'templates' | 'details' | 'editor' | 'preview' | 'sections' | 'brand' | 'access'
 type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
 
 type DeviceConfig = {
@@ -278,7 +284,8 @@ export function App() {
   )
   const [companyId, setCompanyId] = useState<CompanyId>(() => loadSelectedCompany())
   const [session, setSession] = useState<Session | null>(null)
-  const [profile, setProfile] = useState<ProfileRecord | null>(null)
+const [profile, setProfile] = useState<ProfileRecord | null>(null)
+  const [membershipCompanyIds, setMembershipCompanyIds] = useState<CompanyId[]>([])
   const [authLoading, setAuthLoading] = useState(true)
   const [authSubmitting, setAuthSubmitting] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
@@ -317,15 +324,32 @@ export function App() {
   const [isSavingBrandProfile, setIsSavingBrandProfile] = useState(false)
   const [templateVersions, setTemplateVersions] = useState<TemplateVersionRecord[]>([])
   const [isLoadingVersions, setIsLoadingVersions] = useState(false)
+  const [accessRecords, setAccessRecords] = useState<AdminAccessRecord[]>([])
+  const [accessSearch, setAccessSearch] = useState('')
+  const [isLoadingAccessRecords, setIsLoadingAccessRecords] = useState(false)
+  const [accessUpdateKey, setAccessUpdateKey] = useState<string | null>(null)
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
   const [settingsPassword, setSettingsPassword] = useState('')
   const [settingsPasswordConfirm, setSettingsPasswordConfirm] = useState('')
   const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [sendTestModalOpen, setSendTestModalOpen] = useState(false)
+  const [sendTestEmailAddress, setSendTestEmailAddress] = useState('')
+  const [sendTestError, setSendTestError] = useState<string | null>(null)
+  const [isSendingTest, setIsSendingTest] = useState(false)
   const [inlinedDocument, setInlinedDocument] = useState('')
 
+  const accessibleCompanies = useMemo(() => {
+    if (profile?.isAdmin) {
+      return companies
+    }
+
+    const allowed = companies.filter((company) => membershipCompanyIds.includes(company.id))
+    return allowed.length > 0 ? allowed : [companies.find((company) => company.id === 'oderco') ?? FALLBACK_COMPANY]
+  }, [membershipCompanyIds, profile?.isAdmin])
+
   const currentCompany = useMemo(
-    () => companies.find((company) => company.id === companyId) ?? FALLBACK_COMPANY,
-    [companyId],
+    () => accessibleCompanies.find((company) => company.id === companyId) ?? accessibleCompanies[0] ?? FALLBACK_COMPANY,
+    [accessibleCompanies, companyId],
   )
   const currentUserName = profile?.fullName || session?.user.user_metadata.full_name || session?.user.email || 'Conta'
   const currentUserEmail = profile?.email || session?.user.email || ''
@@ -380,6 +404,19 @@ export function App() {
     [companyId, sectionView, sections],
   )
 
+  const filteredAccessRecords = useMemo(() => {
+    const query = accessSearch.trim().toLowerCase()
+
+    return accessRecords.filter((record) => {
+      if (!query) {
+        return true
+      }
+
+      const haystack = [record.fullName, record.email, ...record.companyIds].join(' ').toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [accessRecords, accessSearch])
+
   const currentBrandProfile = useMemo(
     () => brandProfiles.find((profile) => profile.companyId === companyId) ?? null,
     [brandProfiles, companyId],
@@ -433,6 +470,10 @@ export function App() {
 
     if (view === 'brand') {
       return ['Identidade visual']
+    }
+
+    if (view === 'access') {
+      return ['Acessos']
     }
 
     if (view === 'preview') {
@@ -494,6 +535,25 @@ export function App() {
       .then((nextProfile) => setProfile(nextProfile))
       .catch(() => setProfile(null))
   }, [session?.user.id])
+
+  useEffect(() => {
+    if (!session?.user.id) {
+      setMembershipCompanyIds([])
+      return
+    }
+
+    loadCurrentMembershipCompanyIds()
+      .then((companyIds) =>
+        setMembershipCompanyIds(companyIds.filter((value): value is CompanyId => isCompanyId(value))),
+      )
+      .catch(() => setMembershipCompanyIds([]))
+  }, [session?.user.id])
+
+  useEffect(() => {
+    if (!accessibleCompanies.some((company) => company.id === companyId)) {
+      setCompanyId(accessibleCompanies[0]?.id ?? DEFAULT_COMPANY_ID)
+    }
+  }, [accessibleCompanies, companyId])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -622,6 +682,42 @@ export function App() {
     }
   }, [draft?.id, view])
 
+  useEffect(() => {
+    if (view !== 'access' || !profile?.isAdmin) {
+      return
+    }
+
+    let cancelled = false
+    setIsLoadingAccessRecords(true)
+
+    loadWorkspaceAccess()
+      .then((records) => {
+        if (!cancelled) {
+          setAccessRecords(records)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNotice('Nao foi possivel carregar os acessos do workspace.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingAccessRecords(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [profile?.isAdmin, view])
+
+  useEffect(() => {
+    if (view === 'access' && !profile?.isAdmin) {
+      setView('templates')
+    }
+  }, [profile?.isAdmin, view])
+
   const syncTemplateInState = (template: TemplateRecord) => {
     setTemplates((current) => {
       const exists = current.some((item) => item.id === template.id)
@@ -730,6 +826,45 @@ export function App() {
       setActiveTemplateId(null)
       setPreviewModalOpen(false)
     })
+  }
+
+  const handleOpenAccess = () => {
+    startTransition(() => {
+      setView('access')
+      setDraft(null)
+      setActiveTemplateId(null)
+      setPreviewModalOpen(false)
+    })
+  }
+
+  const handleToggleWorkspaceAccess = async (userId: string, targetCompanyId: CompanyId, enabled: boolean) => {
+    const updateKey = `${userId}:${targetCompanyId}`
+    setAccessUpdateKey(updateKey)
+
+    try {
+      await setWorkspaceCompanyAccess(userId, targetCompanyId, enabled)
+      setAccessRecords((current) =>
+        current.map((record) => {
+          if (record.userId !== userId) {
+            return record
+          }
+
+          const nextCompanyIds = enabled
+            ? [...new Set([...record.companyIds, targetCompanyId])].sort((left, right) => left.localeCompare(right))
+            : record.companyIds.filter((company) => company !== targetCompanyId)
+
+          return {
+            ...record,
+            companyIds: nextCompanyIds,
+          }
+        }),
+      )
+      setNotice(enabled ? 'Acesso liberado para a empresa.' : 'Acesso removido da empresa.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Nao foi possivel atualizar o acesso do usuario.')
+    } finally {
+      setAccessUpdateKey(null)
+    }
   }
 
   const handleSaveBrandProfile = async () => {
@@ -1077,6 +1212,47 @@ export function App() {
     }
   }
 
+  const handleOpenSendTestModal = () => {
+    setSendTestEmailAddress(currentUserEmail)
+    setSendTestError(null)
+    setSendTestModalOpen(true)
+  }
+
+  const handleSendTestEmail = async () => {
+    if (!draft || !session?.access_token) {
+      setSendTestError('Sua sessao expirou. Entre novamente para enviar um teste.')
+      return
+    }
+
+    if (!sendTestEmailAddress.trim()) {
+      setSendTestError('Informe um email de destino para o teste.')
+      return
+    }
+
+    if (!draft.markup.trim()) {
+      setSendTestError('O template esta vazio. Salve ou gere um markup antes de enviar.')
+      return
+    }
+
+    setIsSendingTest(true)
+    setSendTestError(null)
+
+    try {
+      await sendTestEmail(session.access_token, {
+        companyId: draft.companyId,
+        markup: draft.markup,
+        subject: draft.subject,
+        toEmail: sendTestEmailAddress.trim().toLowerCase(),
+      })
+      setSendTestModalOpen(false)
+      setNotice('Email de teste enviado.')
+    } catch (error) {
+      setSendTestError(error instanceof Error ? error.message : 'Nao foi possivel enviar o email de teste.')
+    } finally {
+      setIsSendingTest(false)
+    }
+  }
+
   const handleCopyMarkup = async () => {
     if (!draft) {
       return
@@ -1125,6 +1301,8 @@ export function App() {
     await signOutCurrentUser()
     setView('templates')
     setDraft(null)
+    setMembershipCompanyIds([])
+    setAccessRecords([])
     setProfileMenuOpen(false)
     setSettingsOpen(false)
   }
@@ -1194,7 +1372,7 @@ export function App() {
           </button>
           {companyPickerOpen && (
             <div className="company-card__menu">
-              {companies.map((company) => (
+              {accessibleCompanies.map((company) => (
                 <button
                   className={`company-card__option ${company.id === companyId ? 'is-active' : ''}`.trim()}
                   key={company.id}
@@ -1230,6 +1408,16 @@ export function App() {
               <PanelsTopLeft size={18} />
               <span>Secoes</span>
             </button>
+            {profile?.isAdmin && (
+              <button
+                className={`sidebar__nav-item ${view === 'access' ? 'is-active' : ''}`.trim()}
+                onClick={handleOpenAccess}
+                type="button"
+              >
+                <Users size={18} />
+                <span>Acessos</span>
+              </button>
+            )}
           </nav>
         </div>
 
@@ -1634,6 +1822,76 @@ export function App() {
             </section>
           )}
 
+          {view === 'access' && profile?.isAdmin && (
+            <section className="page">
+              <header className="page-heading">
+                <div>
+                  <h2>Acessos</h2>
+                  <p>Controle quais empresas cada usuario pode abrir no workspace.</p>
+                </div>
+              </header>
+
+              <section className="filters-bar">
+                <label className="filters-search">
+                  <Search size={16} />
+                  <input
+                    onChange={(event) => setAccessSearch(event.target.value)}
+                    placeholder="Buscar por nome, email ou empresa"
+                    value={accessSearch}
+                  />
+                </label>
+              </section>
+
+              {isLoadingAccessRecords ? (
+                <section className="empty-card">
+                  <h3>Carregando acessos</h3>
+                  <p>Buscando usuarios e memberships do workspace.</p>
+                </section>
+              ) : filteredAccessRecords.length === 0 ? (
+                <section className="empty-card">
+                  <Users size={30} />
+                  <h3>Nenhum usuario encontrado</h3>
+                  <p>Ajuste a busca para encontrar um usuario do workspace.</p>
+                </section>
+              ) : (
+                <section className="access-grid">
+                  {filteredAccessRecords.map((record) => (
+                    <article className="access-card" key={record.userId}>
+                      <div className="access-card__header">
+                        <div>
+                          <h3>{record.fullName}</h3>
+                          <p>{record.email}</p>
+                        </div>
+                        {record.isAdmin && <span className="access-card__badge">Admin</span>}
+                      </div>
+
+                      <div className="access-card__companies">
+                        {companies.map((company) => {
+                          const checked = record.companyIds.includes(company.id)
+                          const updateKey = `${record.userId}:${company.id}`
+
+                          return (
+                            <label className="access-company" key={company.id}>
+                              <input
+                                checked={checked}
+                                disabled={record.isAdmin || accessUpdateKey === updateKey}
+                                onChange={(event) =>
+                                  void handleToggleWorkspaceAccess(record.userId, company.id, event.target.checked)
+                                }
+                                type="checkbox"
+                              />
+                              <span>{company.name}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </article>
+                  ))}
+                </section>
+              )}
+            </section>
+          )}
+
           {view === 'details' && draft && (
             <section className="details-page">
               <div className="details-stack">
@@ -1678,6 +1936,10 @@ export function App() {
                       <div className="details-page__actions">
                         <button className="secondary-button" onClick={() => handleOpenPreview(draft)} type="button">
                           Preview
+                        </button>
+                        <button className="secondary-button" onClick={handleOpenSendTestModal} type="button">
+                          <Send size={16} />
+                          Enviar teste
                         </button>
                         <button className="primary-button" onClick={handleContinuarFromDetails} type="button">
                           Editar
@@ -1825,6 +2087,10 @@ export function App() {
               <footer className="bottom-bar">
                 <button className="secondary-button" onClick={() => setView('details')} type="button">
                   Cancelar
+                </button>
+                <button className="secondary-button" onClick={handleOpenSendTestModal} type="button">
+                  <Send size={16} />
+                  Enviar teste
                 </button>
                 <button className="secondary-button" onClick={handleCopyMarkup} type="button">
                   <Copy size={16} />
@@ -2134,6 +2400,52 @@ export function App() {
               <button className="primary-button" disabled={aiGenerating} onClick={handleGenerateWithAi} type="button">
                 <Sparkles size={16} />
                 {aiGenerating ? 'Gerando...' : aiUseCurrentMarkup ? 'Gerar variacao' : 'Gerar HTML'}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {sendTestModalOpen && draft && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card modal-card--wide" role="dialog">
+            <header className="modal-card__header">
+              <div>
+                <h3>Enviar teste</h3>
+                <p>Dispare uma copia real do template atual para validar o HTML em uma caixa de entrada.</p>
+              </div>
+              <button aria-label="Fechar" className="icon-button" onClick={() => setSendTestModalOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__body">
+              <label className="field">
+                <span>Email de destino</span>
+                <input
+                  autoFocus
+                  onChange={(event) => setSendTestEmailAddress(event.target.value)}
+                  placeholder="voce@empresa.com"
+                  type="email"
+                  value={sendTestEmailAddress}
+                />
+              </label>
+
+              <div className="ai-brand-note">
+                <span>Assunto enviado</span>
+                <strong>{draft.subject || 'Sem assunto'}</strong>
+              </div>
+
+              {sendTestError && <div className="auth-card__error">{sendTestError}</div>}
+            </div>
+
+            <footer className="modal-card__actions">
+              <button className="secondary-button" onClick={() => setSendTestModalOpen(false)} type="button">
+                Cancelar
+              </button>
+              <button className="primary-button" disabled={isSendingTest} onClick={handleSendTestEmail} type="button">
+                <Send size={16} />
+                {isSendingTest ? 'Enviando...' : 'Enviar agora'}
               </button>
             </footer>
           </section>

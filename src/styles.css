@@ -1730,6 +1730,79 @@ button {
   gap: 18px;
 }
 
+.access-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.access-card {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.access-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.access-card__header h3 {
+  margin: 0 0 4px;
+  font-size: 1.16rem;
+}
+
+.access-card__header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.access-card__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.access-card__companies {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.access-company {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-alt);
+}
+
+.access-company input {
+  width: 18px;
+  height: 18px;
+}
+
+.access-company span {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .field--file input[type='file'] {
   width: 100%;
   padding: 12px 14px;
@@ -2005,6 +2078,7 @@ button {
   }
 
   .ai-options,
+  .access-grid,
   .brand-grid,
   .settings-grid,
   .filters-bar {
@@ -2017,5 +2091,9 @@ button {
 
   .filters-group {
     display: grid;
+  }
+
+  .access-card__companies {
+    grid-template-columns: 1fr;
   }
 }
