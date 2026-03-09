@@ -309,6 +309,7 @@ export function App() {
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiUseFavoriteHeader, setAiUseFavoriteHeader] = useState(false)
   const [aiUseFavoriteFooter, setAiUseFavoriteFooter] = useState(false)
+  const [aiUseCurrentMarkup, setAiUseCurrentMarkup] = useState(false)
   const [copied, setCopied] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [isHydrating, setIsHydrating] = useState(true)
@@ -1028,6 +1029,7 @@ export function App() {
     setAiError(null)
     setAiUseFavoriteHeader(Boolean(favoriteHeader))
     setAiUseFavoriteFooter(Boolean(favoriteFooter))
+    setAiUseCurrentMarkup(Boolean(draft?.markup.trim()))
     setAiModalOpen(true)
   }
 
@@ -1050,8 +1052,10 @@ export function App() {
         brandProfile: currentBrandProfile,
         category: draft.category,
         companyName: currentCompany.name,
+        currentMarkup: aiUseCurrentMarkup ? draft.markup : '',
         favoriteFooter: aiUseFavoriteFooter ? favoriteFooter : null,
         favoriteHeader: aiUseFavoriteHeader ? favoriteHeader : null,
+        mode: aiUseCurrentMarkup ? 'variation' : 'create',
         subject: draft.subject,
         templateName: draft.name,
       })
@@ -1065,7 +1069,7 @@ export function App() {
       const saved = await persistTemplate(nextDraft)
       setDraft(saved)
       setAiModalOpen(false)
-      setNotice('Markup gerado com Gemini e salvo no Supabase.')
+      setNotice(aiUseCurrentMarkup ? 'Variacao gerada com Gemini e salva no Supabase.' : 'Markup gerado com Gemini e salvo no Supabase.')
     } catch (error) {
       setAiError(error instanceof Error ? error.message : 'Nao foi possivel gerar o template com IA.')
     } finally {
@@ -2073,6 +2077,23 @@ export function App() {
               <div className="ai-options ai-options--compact">
                 <label className="ai-option">
                   <input
+                    checked={aiUseCurrentMarkup}
+                    disabled={!draft?.markup.trim()}
+                    onChange={(event) => setAiUseCurrentMarkup(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <div>
+                    <strong>Usar template atual como base</strong>
+                    <small className="ai-option__detail">
+                      {draft?.markup.trim()
+                        ? 'A IA cria uma variacao reaproveitando a estrutura atual.'
+                        : 'Este template ainda nao tem markup salvo para servir como base.'}
+                    </small>
+                  </div>
+                </label>
+
+                <label className="ai-option">
+                  <input
                     checked={aiUseFavoriteHeader}
                     disabled={!favoriteHeader}
                     onChange={(event) => setAiUseFavoriteHeader(event.target.checked)}
@@ -2112,7 +2133,7 @@ export function App() {
               </button>
               <button className="primary-button" disabled={aiGenerating} onClick={handleGenerateWithAi} type="button">
                 <Sparkles size={16} />
-                {aiGenerating ? 'Gerando...' : 'Gerar HTML'}
+                {aiGenerating ? 'Gerando...' : aiUseCurrentMarkup ? 'Gerar variacao' : 'Gerar HTML'}
               </button>
             </footer>
           </section>

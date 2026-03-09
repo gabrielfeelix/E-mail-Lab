@@ -6,8 +6,10 @@ type GenerateEmailMarkupInput = {
   brandProfile: BrandProfileRecord | null
   category: string
   companyName: string
+  currentMarkup?: string
   favoriteFooter: SectionRecord | null
   favoriteHeader: SectionRecord | null
+  mode?: 'create' | 'variation'
   subject: string
   templateName: string
 }
@@ -25,12 +27,14 @@ const browserGeminiThinkingLevel = (import.meta.env.VITE_GEMINI_THINKING_LEVEL |
 const GENERATION_TIMEOUT_MS = 45000
 
 function buildPrompt(input: GenerateEmailMarkupInput) {
+  const generationMode = input.mode === 'variation' ? 'variation' : 'create'
   const sections = [
     `Empresa: ${input.companyName}`,
     `Template: ${input.templateName}`,
     `Assunto: ${input.subject}`,
     `Categoria: ${input.category}`,
     `Briefing: ${input.brief}`,
+    `Modo: ${generationMode === 'variation' ? 'gerar variacao a partir do template atual' : 'criar novo template do zero'}`,
   ]
 
   if (input.favoriteHeader?.markup) {
@@ -41,6 +45,10 @@ function buildPrompt(input: GenerateEmailMarkupInput) {
     sections.push(`Footer base para usar e preservar:\n${input.favoriteFooter.markup}`)
   }
 
+  if (input.currentMarkup?.trim()) {
+    sections.push(`Template atual para usar como base da variacao:\n${input.currentMarkup}`)
+  }
+
   sections.push(
     [
       'Gere um email HTML completo em pt-BR para uso real em email marketing.',
@@ -49,6 +57,10 @@ function buildPrompt(input: GenerateEmailMarkupInput) {
       'Pode usar <style> no documento, mas mantenha compatibilidade com clientes de email.',
       'Use layout responsivo, largura segura de 600px no desktop e estrutura clara para mobile.',
       'Se header e footer foram enviados, mantenha esses blocos como base do resultado.',
+      generationMode === 'variation'
+        ? 'Reaproveite a estrutura, identidade visual e hierarquia do template atual como base, evoluindo o layout e o conteudo sem trocar a marca.'
+        : 'Se nao houver template atual como base, crie uma estrutura completa coerente com a marca e com o briefing.',
+      'Evite qualquer largura fixa maior que 100% no mobile. Use tabelas fluidas, wrappers com width:100% e imagens com max-width:100%.',
     ].join(' '),
   )
 

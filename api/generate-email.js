@@ -10,12 +10,14 @@ function extractMarkup(text) {
 }
 
 function buildPrompt(body) {
+  const generationMode = body.mode === 'variation' ? 'variation' : 'create'
   const sections = [
     `Empresa: ${body.companyName}`,
     `Template: ${body.templateName}`,
     `Assunto: ${body.subject}`,
     `Categoria: ${body.category}`,
     `Briefing: ${body.brief}`,
+    `Modo: ${generationMode === 'variation' ? 'gerar variacao a partir do template atual' : 'criar novo template do zero'}`,
   ]
 
   if (body.favoriteHeader?.markup) {
@@ -24,6 +26,10 @@ function buildPrompt(body) {
 
   if (body.favoriteFooter?.markup) {
     sections.push(`Footer base para usar e preservar:\n${body.favoriteFooter.markup}`)
+  }
+
+  if (String(body.currentMarkup || '').trim()) {
+    sections.push(`Template atual para usar como base da variacao:\n${body.currentMarkup}`)
   }
 
   if (body.brandProfile) {
@@ -56,6 +62,10 @@ function buildPrompt(body) {
       'Pode usar <style> no documento, mas mantenha compatibilidade com clientes de email.',
       'Use layout responsivo, largura segura de 600px no desktop e estrutura clara para mobile.',
       'Se header e footer foram enviados, mantenha esses blocos como base do resultado.',
+      generationMode === 'variation'
+        ? 'Reaproveite a estrutura, identidade visual e hierarquia do template atual como base, evoluindo o layout e o conteudo sem trocar a marca.'
+        : 'Se nao houver template atual como base, crie uma estrutura completa coerente com a marca e com o briefing.',
+      'Evite qualquer largura fixa maior que 100% no mobile. Use tabelas fluidas, wrappers com width:100% e imagens com max-width:100%.',
     ].join(' '),
   )
 

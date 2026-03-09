@@ -1456,7 +1456,11 @@ button {
 
 .auth-card__submit {
   width: 100%;
-  min-height: 50px;
+  min-height: 56px;
+  height: 56px;
+  padding: 0 18px;
+  border-radius: 16px;
+  align-self: start;
 }
 
 .auth-input {
@@ -1484,19 +1488,34 @@ button {
   color: var(--muted);
 }
 
-.auth-input__field {
-  min-height: 48px;
-  padding: 0 12px;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
+.auth-field .auth-input {
+  min-height: 58px;
+  padding: 0 10px 0 14px;
 }
 
-.auth-input__field:focus {
+.auth-field .auth-input__field {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
   box-shadow: none;
 }
 
-.auth-input__field--password {
+.auth-field .auth-input__field::placeholder {
+  color: #8c98ab;
+}
+
+.auth-field .auth-input__field:focus {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+
+.auth-field .auth-input__field--password {
   padding-right: 4px;
 }
 
@@ -1848,16 +1867,19 @@ button {
 
 .auth-card--elevated {
   border-radius: 32px;
+  align-self: center;
 }
 
 .auth-form {
   display: grid;
-  gap: 18px;
-  padding: 24px;
+  gap: 16px;
+  padding: 22px 24px 28px;
+  align-content: start;
 }
 
 .auth-field {
   gap: 10px;
+  align-content: start;
 }
 
 .modal-card__header,
