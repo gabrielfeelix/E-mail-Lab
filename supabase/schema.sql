@@ -135,6 +135,17 @@ create table if not exists public.company_brand_profiles (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.template_variables (
+  id text primary key,
+  group_id text not null,
+  group_label text not null,
+  label text not null,
+  token text not null unique,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.company_brand_profiles
   add column if not exists logo_url text not null default '';
 
@@ -186,6 +197,9 @@ create index if not exists email_sections_company_id_idx
 create index if not exists company_brand_profiles_company_id_idx
   on public.company_brand_profiles (company_id);
 
+create index if not exists template_variables_group_idx
+  on public.template_variables (group_id, sort_order);
+
 drop trigger if exists companies_set_updated_at on public.companies;
 create trigger companies_set_updated_at
 before update on public.companies
@@ -225,6 +239,12 @@ execute function public.set_updated_at();
 drop trigger if exists company_brand_profiles_set_updated_at on public.company_brand_profiles;
 create trigger company_brand_profiles_set_updated_at
 before update on public.company_brand_profiles
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists template_variables_set_updated_at on public.template_variables;
+create trigger template_variables_set_updated_at
+before update on public.template_variables
 for each row
 execute function public.set_updated_at();
 
@@ -512,6 +532,46 @@ set
   end,
   updated_at = timezone('utc', now());
 
+insert into public.template_variables (
+  id,
+  group_id,
+  group_label,
+  label,
+  token,
+  sort_order
+)
+values
+  ('base-url', 'web', 'Web', 'URL Base', '{{config path="web/unsecure/base_url"}}', 10),
+  ('secure-base-url', 'web', 'Web', 'URL Base Seguro', '{{config path="web/secure/base_url"}}', 20),
+  ('general-name', 'general-contact', 'Enderecos de E-mail da Loja / Contato geral', 'Nome do remetente', '{{config path="trans_email/ident_general/name"}}', 10),
+  ('general-email', 'general-contact', 'Enderecos de E-mail da Loja / Contato geral', 'E-mail do remetente', '{{config path="trans_email/ident_general/email"}}', 20),
+  ('sales-name', 'sales-contact', 'Enderecos de E-mail da Loja / Representante de Vendas', 'Nome do remetente', '{{config path="trans_email/ident_sales/name"}}', 10),
+  ('sales-email', 'sales-contact', 'Enderecos de E-mail da Loja / Representante de Vendas', 'E-mail do remetente', '{{config path="trans_email/ident_sales/email"}}', 20),
+  ('support-name', 'support-contact', 'Enderecos de E-mail da Loja / Suporte ao cliente', 'Nome do remetente', '{{config path="trans_email/ident_support/name"}}', 10),
+  ('support-email', 'support-contact', 'Enderecos de E-mail da Loja / Suporte ao cliente', 'E-mail do remetente', '{{config path="trans_email/ident_support/email"}}', 20),
+  ('custom1-name', 'custom1-contact', 'Enderecos de E-mail da Loja / E-mail Personalizado 1', 'Nome do remetente', '{{config path="trans_email/ident_custom1/name"}}', 10),
+  ('custom1-email', 'custom1-contact', 'Enderecos de E-mail da Loja / E-mail Personalizado 1', 'E-mail do remetente', '{{config path="trans_email/ident_custom1/email"}}', 20),
+  ('custom2-name', 'custom2-contact', 'Enderecos de E-mail da Loja / E-mail Personalizado 2', 'Nome do remetente', '{{config path="trans_email/ident_custom2/name"}}', 10),
+  ('custom2-email', 'custom2-contact', 'Enderecos de E-mail da Loja / E-mail Personalizado 2', 'E-mail do remetente', '{{config path="trans_email/ident_custom2/email"}}', 20),
+  ('store-name', 'store-information', 'Geral / Informacao da Loja', 'Nome da loja', '{{config path="general/store_information/name"}}', 10),
+  ('store-phone', 'store-information', 'Geral / Informacao da Loja', 'Numero de telefone da loja', '{{config path="general/store_information/phone"}}', 20),
+  ('store-hours', 'store-information', 'Geral / Informacao da Loja', 'Horarios de funcionamento', '{{config path="general/store_information/hours"}}', 30),
+  ('store-country', 'store-information', 'Geral / Informacao da Loja', 'Pais', '{{config path="general/store_information/country_id"}}', 40),
+  ('store-region', 'store-information', 'Geral / Informacao da Loja', 'Regiao/estado', '{{config path="general/store_information/region_id"}}', 50),
+  ('store-postcode', 'store-information', 'Geral / Informacao da Loja', 'Codigo Postal', '{{config path="general/store_information/postcode"}}', 60),
+  ('store-city', 'store-information', 'Geral / Informacao da Loja', 'Cidade', '{{config path="general/store_information/city"}}', 70),
+  ('store-address-line1', 'store-information', 'Geral / Informacao da Loja', 'Endereco', '{{config path="general/store_information/street_line1"}}', 80),
+  ('store-address-line2', 'store-information', 'Geral / Informacao da Loja', 'Complemento', '{{config path="general/store_information/street_line2"}}', 90),
+  ('store-document', 'store-information', 'Geral / Informacao da Loja', 'CPF/CNPJ', '{{config path="general/store_information/merchant_vat_number"}}', 100)
+on conflict (id) do update
+set
+  group_id = excluded.group_id,
+  group_label = excluded.group_label,
+  label = excluded.label,
+  token = excluded.token,
+  sort_order = excluded.sort_order,
+  updated_at = timezone('utc', now());
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -678,6 +738,7 @@ alter table public.email_templates enable row level security;
 alter table public.email_template_versions enable row level security;
 alter table public.email_sections enable row level security;
 alter table public.company_brand_profiles enable row level security;
+alter table public.template_variables enable row level security;
 
 drop policy if exists "profiles self read" on public.profiles;
 create policy "profiles self read"
@@ -798,6 +859,21 @@ to authenticated
 using (public.can_access_company(company_id))
 with check (public.can_access_company(company_id));
 
+drop policy if exists "workspace variables read" on public.template_variables;
+create policy "workspace variables read"
+on public.template_variables
+for select
+to authenticated
+using (auth.uid() is not null);
+
+drop policy if exists "workspace variables write" on public.template_variables;
+create policy "workspace variables write"
+on public.template_variables
+for all
+to authenticated
+using (public.is_workspace_admin())
+with check (public.is_workspace_admin());
+
 comment on table public.companies is
   'Empresas/projetos do E-mail Lab com tema visual e nota opcional.';
 
@@ -815,6 +891,9 @@ comment on table public.email_sections is
 
 comment on table public.company_brand_profiles is
   'Contexto de identidade visual por empresa para apoiar criacao manual e geracao com IA.';
+
+comment on table public.template_variables is
+  'Catalogo compartilhado de variaveis Magento usadas nos templates do E-mail Lab.';
 
 comment on table public.profiles is
   'Perfil basico do usuario autenticado no E-mail Lab.';

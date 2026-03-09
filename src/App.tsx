@@ -32,7 +32,7 @@ import { CategoryField } from './components/CategoryField'
 import { ColorTokenField } from './components/ColorTokenField'
 import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
-import { templateVariableGroups } from './data/template-variables'
+import { templateVariableGroups, type TemplateVariableGroup } from './data/template-variables'
 import {
   getCurrentSession,
   loadCurrentMembershipCompanyIds,
@@ -49,6 +49,7 @@ import { loadRemoteBrandProfiles, saveRemoteBrandProfile } from './lib/brand-pro
 import { describeMarkup, inlineEmailDocument } from './lib/email'
 import { deleteRemoteSection, loadRemoteSections, saveRemoteSection } from './lib/section-store'
 import { sendTestEmail } from './lib/send-test'
+import { loadRemoteTemplateVariables } from './lib/template-variable-store'
 import {
   buildCategoryMap,
   deleteRemoteTemplate,
@@ -281,6 +282,7 @@ export function App() {
   const [templates, setTemplates] = useState<TemplateRecord[]>(initialTemplates)
   const [sections, setSections] = useState<SectionRecord[]>([])
   const [brandProfiles, setBrandProfiles] = useState<BrandProfileRecord[]>([])
+  const [variableGroups, setVariableGroups] = useState<TemplateVariableGroup[]>(templateVariableGroups)
   const [categoryMap, setCategoryMap] = useState<Map<CompanyId, string[]>>(() =>
     buildCategoryMap([], initialTemplates),
   )
@@ -464,7 +466,7 @@ export function App() {
   const filteredVariableGroups = useMemo(() => {
     const query = variableSearch.trim().toLowerCase()
 
-    return templateVariableGroups
+    return variableGroups
       .map((group) => ({
         ...group,
         variables: group.variables.filter((variable) => {
@@ -476,7 +478,7 @@ export function App() {
         }),
       }))
       .filter((group) => group.variables.length > 0)
-  }, [variableSearch])
+  }, [variableGroups, variableSearch])
 
   const deferredMarkup = useDeferredValue(draft?.markup ?? '')
   const markupStats = useMemo(() => describeMarkup(deferredMarkup), [deferredMarkup])
@@ -619,10 +621,11 @@ export function App() {
 
     async function hydrateWorkspace() {
       try {
-        const [remote, remoteSections, remoteBrandProfiles] = await Promise.all([
+        const [remote, remoteSections, remoteBrandProfiles, remoteVariables] = await Promise.all([
           loadRemoteWorkspace(),
           loadRemoteSections(),
           loadRemoteBrandProfiles(),
+          loadRemoteTemplateVariables(),
         ])
         let nextTemplates = remote.templates
 
@@ -641,6 +644,7 @@ export function App() {
         setCategoryMap(buildCategoryMap(remote.categories, nextTemplates))
         setSections(remoteSections)
         setBrandProfiles(remoteBrandProfiles)
+        setVariableGroups(remoteVariables.length > 0 ? remoteVariables : templateVariableGroups)
       } catch {
         if (!cancelled) {
           setNotice('Supabase indisponivel. Mantendo os dados locais nesta sessao.')
