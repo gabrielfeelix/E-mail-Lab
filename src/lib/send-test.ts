@@ -2,7 +2,7 @@ type SendTestEmailInput = {
   companyId: string
   markup: string
   subject: string
-  toEmail: string
+  toEmails: string[]
 }
 
 export async function sendTestEmail(accessToken: string, input: SendTestEmailInput) {

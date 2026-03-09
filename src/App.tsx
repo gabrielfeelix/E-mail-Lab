@@ -334,6 +334,7 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [sendTestModalOpen, setSendTestModalOpen] = useState(false)
   const [sendTestEmailAddress, setSendTestEmailAddress] = useState('')
+  const [sendTestRecipients, setSendTestRecipients] = useState<string[]>([])
   const [sendTestError, setSendTestError] = useState<string | null>(null)
   const [isSendingTest, setIsSendingTest] = useState(false)
   const [inlinedDocument, setInlinedDocument] = useState('')
@@ -1214,6 +1215,7 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
 
   const handleOpenSendTestModal = () => {
     setSendTestEmailAddress(currentUserEmail)
+    setSendTestRecipients(currentUserEmail ? [currentUserEmail] : [])
     setSendTestError(null)
     setSendTestModalOpen(true)
   }
@@ -1224,7 +1226,7 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
       return
     }
 
-    if (!sendTestEmailAddress.trim()) {
+    if (sendTestRecipients.length === 0) {
       setSendTestError('Informe um email de destino para o teste.')
       return
     }
@@ -1242,7 +1244,7 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
         companyId: draft.companyId,
         markup: draft.markup,
         subject: draft.subject,
-        toEmail: sendTestEmailAddress.trim().toLowerCase(),
+        toEmails: sendTestRecipients,
       })
       setSendTestModalOpen(false)
       setNotice('Email de teste enviado.')
@@ -1251,6 +1253,29 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
     } finally {
       setIsSendingTest(false)
     }
+  }
+
+  const handleAddSendTestRecipient = (email: string) => {
+    const normalized = email.trim().toLowerCase()
+
+    if (!normalized) {
+      return
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      setSendTestError('Informe um email valido para adicionar na lista.')
+      return
+    }
+
+    setSendTestRecipients((current) =>
+      current.includes(normalized) ? current : [...current, normalized],
+    )
+    setSendTestEmailAddress('')
+    setSendTestError(null)
+  }
+
+  const handleRemoveSendTestRecipient = (email: string) => {
+    setSendTestRecipients((current) => current.filter((item) => item !== email))
   }
 
   const handleCopyMarkup = async () => {
@@ -2424,14 +2449,60 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
             <div className="modal-card__body">
               <label className="field">
                 <span>Email de destino</span>
-                <input
-                  autoFocus
-                  onChange={(event) => setSendTestEmailAddress(event.target.value)}
-                  placeholder="voce@empresa.com"
-                  type="email"
-                  value={sendTestEmailAddress}
-                />
+                <div className="send-test-input">
+                  <input
+                    autoFocus
+                    onChange={(event) => setSendTestEmailAddress(event.target.value)}
+                    placeholder="voce@empresa.com"
+                    type="email"
+                    value={sendTestEmailAddress}
+                  />
+                  <button
+                    className="secondary-button"
+                    onClick={() => handleAddSendTestRecipient(sendTestEmailAddress)}
+                    type="button"
+                  >
+                    Adicionar
+                  </button>
+                </div>
               </label>
+
+              <div className="send-test-suggestions">
+                <button
+                  className="secondary-button"
+                  onClick={() => handleAddSendTestRecipient('rodrigo.leite@oderco.com.br')}
+                  type="button"
+                >
+                  rodrigo.leite@oderco.com.br
+                </button>
+                {currentUserEmail && (
+                  <button
+                    className="secondary-button"
+                    onClick={() => handleAddSendTestRecipient(currentUserEmail)}
+                    type="button"
+                  >
+                    {currentUserEmail}
+                  </button>
+                )}
+              </div>
+
+              {sendTestRecipients.length > 0 && (
+                <div className="send-test-recipients">
+                  {sendTestRecipients.map((email) => (
+                    <div className="send-test-recipient" key={email}>
+                      <span>{email}</span>
+                      <button
+                        aria-label={`Remover ${email}`}
+                        className="icon-button"
+                        onClick={() => handleRemoveSendTestRecipient(email)}
+                        type="button"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="ai-brand-note">
                 <span>Assunto enviado</span>

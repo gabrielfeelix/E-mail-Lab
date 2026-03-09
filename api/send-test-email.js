@@ -124,13 +124,21 @@ export default async function handler(req, res) {
   }
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}
-  const toEmail = String(body.toEmail || '').trim().toLowerCase()
+  const toEmails = Array.isArray(body.toEmails)
+    ? body.toEmails.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : []
   const companyId = String(body.companyId || '').trim()
   const subject = String(body.subject || '').trim()
   const markup = String(body.markup || '')
 
-  if (!toEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+  if (toEmails.length === 0) {
     res.status(400).json({ ok: false, message: 'Informe um email valido para o teste.' })
+    return
+  }
+
+  const invalidEmail = toEmails.find((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+  if (invalidEmail) {
+    res.status(400).json({ ok: false, message: `Email invalido: ${invalidEmail}` })
     return
   }
 
@@ -173,7 +181,7 @@ export default async function handler(req, res) {
     from: smtpFrom,
     html,
     subject: `[TESTE] ${subject || `Template ${companyResult.data.name}`}`,
-    to: toEmail,
+    to: toEmails,
   })
 
   res.status(200).json({ ok: true, message: 'Email de teste enviado.' })
