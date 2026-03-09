@@ -1281,6 +1281,7 @@ export function App() {
         favoriteHeader: aiUseFavoriteHeader ? favoriteHeader : null,
         mode: aiUseCurrentMarkup ? 'variation' : 'create',
         subject: draft.subject,
+        templateVariables: variableGroups,
         templateName: draft.name,
       })
 

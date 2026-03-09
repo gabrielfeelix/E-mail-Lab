@@ -9,6 +9,32 @@ function extractMarkup(text) {
   return (fencedMatch ? fencedMatch[1] : normalized).trim()
 }
 
+function formatTemplateVariablesContext(groups) {
+  const normalizedGroups = Array.isArray(groups)
+    ? groups
+        .map((group) => ({
+          ...group,
+          variables: Array.isArray(group?.variables)
+            ? group.variables.filter((variable) => String(variable?.token || '').trim())
+            : [],
+        }))
+        .filter((group) => group.variables.length > 0)
+    : []
+
+  if (normalizedGroups.length === 0) {
+    return 'Nenhuma variavel Magento foi fornecida.'
+  }
+
+  return normalizedGroups
+    .map((group) =>
+      [
+        `[${String(group.label || group.id || 'SEM CATEGORIA')}]`,
+        ...group.variables.map((variable) => `- ${String(variable?.label || 'Sem nome')}: ${String(variable?.token || '')}`),
+      ].join('\n'),
+    )
+    .join('\n\n')
+}
+
 function buildPrompt(body) {
   const generationMode = body.mode === 'variation' ? 'variation' : 'create'
   const sections = [
@@ -65,6 +91,11 @@ function buildPrompt(body) {
       generationMode === 'variation'
         ? 'Reaproveite a estrutura, identidade visual e hierarquia do template atual como base, evoluindo o layout e o conteudo sem trocar a marca.'
         : 'Se nao houver template atual como base, crie uma estrutura completa coerente com a marca e com o briefing.',
+      'Voce recebeu um catalogo de variaveis Magento disponiveis para este workspace.',
+      'Sempre que o email precisar de dados dinamicos como cliente, pedido, fatura, senha, envio, links da loja ou contatos, use as variaveis exatas do catalogo.',
+      'Nao invente variaveis Magento fora do catalogo fornecido.',
+      'Preserve a sintaxe literal das variaveis exatamente como enviada, incluindo {{ ... }}.',
+      'Se um texto pode ser fixo e nao precisa de dado dinamico, escreva texto fixo normalmente.',
       'No mobile, nenhum bloco pode exigir scroll horizontal.',
       'Use um wrapper principal com width:100% e max-width:600px centralizado.',
       'Evite qualquer largura fixa maior que 100% no mobile. Use tabelas fluidas, wrappers com width:100%, max-width:100% e imagens com max-width:100%.',
@@ -73,6 +104,8 @@ function buildPrompt(body) {
       'Nao use palavras em fontes gigantes ou caixas estreitas que facam o texto cortar; preserve leitura completa em 320px a 430px.',
     ].join(' '),
   )
+
+  sections.push(`Catalogo de variaveis Magento disponiveis:\n${formatTemplateVariablesContext(body.templateVariables)}`)
 
   return sections.join('\n\n')
 }

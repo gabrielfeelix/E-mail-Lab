@@ -1,5 +1,6 @@
 import type { BrandProfileRecord } from '../types/brand-profile'
 import type { SectionRecord } from '../types/section'
+import type { TemplateVariableGroup } from '../data/template-variables'
 
 type GenerateEmailMarkupInput = {
   brief: string
@@ -11,6 +12,7 @@ type GenerateEmailMarkupInput = {
   favoriteHeader: SectionRecord | null
   mode?: 'create' | 'variation'
   subject: string
+  templateVariables: TemplateVariableGroup[]
   templateName: string
 }
 
@@ -25,6 +27,28 @@ const browserGeminiKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim()
 const browserGeminiModel = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-3-flash-preview').trim()
 const browserGeminiThinkingLevel = (import.meta.env.VITE_GEMINI_THINKING_LEVEL || 'minimal').trim()
 const GENERATION_TIMEOUT_MS = 45000
+
+function formatTemplateVariablesContext(groups: TemplateVariableGroup[]) {
+  const normalizedGroups = groups
+    .map((group) => ({
+      ...group,
+      variables: group.variables.filter((variable) => variable.token.trim()),
+    }))
+    .filter((group) => group.variables.length > 0)
+
+  if (normalizedGroups.length === 0) {
+    return 'Nenhuma variavel Magento foi fornecida.'
+  }
+
+  return normalizedGroups
+    .map((group) =>
+      [
+        `[${group.label}]`,
+        ...group.variables.map((variable) => `- ${variable.label}: ${variable.token}`),
+      ].join('\n'),
+    )
+    .join('\n\n')
+}
 
 function buildPrompt(input: GenerateEmailMarkupInput) {
   const generationMode = input.mode === 'variation' ? 'variation' : 'create'
@@ -60,6 +84,11 @@ function buildPrompt(input: GenerateEmailMarkupInput) {
       generationMode === 'variation'
         ? 'Reaproveite a estrutura, identidade visual e hierarquia do template atual como base, evoluindo o layout e o conteudo sem trocar a marca.'
         : 'Se nao houver template atual como base, crie uma estrutura completa coerente com a marca e com o briefing.',
+      'Voce recebeu um catalogo de variaveis Magento disponiveis para este workspace.',
+      'Sempre que o email precisar de dados dinamicos como cliente, pedido, fatura, senha, envio, links da loja ou contatos, use as variaveis exatas do catalogo.',
+      'Nao invente variaveis Magento fora do catalogo fornecido.',
+      'Preserve a sintaxe literal das variaveis exatamente como enviada, incluindo {{ ... }}.',
+      'Se um texto pode ser fixo e nao precisa de dado dinamico, escreva texto fixo normalmente.',
       'No mobile, nenhum bloco pode exigir scroll horizontal.',
       'Use um wrapper principal com width:100% e max-width:600px centralizado.',
       'Evite qualquer largura fixa maior que 100% no mobile. Use tabelas fluidas, wrappers com width:100%, max-width:100% e imagens com max-width:100%.',
@@ -90,6 +119,8 @@ function buildPrompt(input: GenerateEmailMarkupInput) {
       sections.push(`Imagem de referencia enviada: ${input.brandProfile.referenceImageName}`)
     }
   }
+
+  sections.push(`Catalogo de variaveis Magento disponiveis:\n${formatTemplateVariablesContext(input.templateVariables)}`)
 
   return sections.join('\n\n')
 }
