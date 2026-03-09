@@ -2084,7 +2084,8 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
                 </section>
               </div>
 
-              <footer className="bottom-bar">
+              {!aiModalOpen && (
+                <footer className="bottom-bar">
                 <button className="secondary-button" onClick={() => setView('details')} type="button">
                   Cancelar
                 </button>
@@ -2101,7 +2102,8 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
                   {isSaving ? 'Salvando' : 'Salvar'}
                 </button>
                 <span className="bottom-bar__status">{isDirty ? 'Nao salvo' : 'Salvo'}</span>
-              </footer>
+                </footer>
+              )}
             </section>
           )}
         </div>
