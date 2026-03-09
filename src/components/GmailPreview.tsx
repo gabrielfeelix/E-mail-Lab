@@ -29,6 +29,7 @@ function PreviewCanvas({
 }: Pick<GmailPreviewProps, 'srcDoc' | 'viewportHeight' | 'viewportWidth'>) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  const cleanupRef = useRef<(() => void) | null>(null)
   const [scale, setScale] = useState(1)
   const [contentWidth, setContentWidth] = useState(() => viewportWidth)
   const [contentHeight, setContentHeight] = useState(() => viewportHeight)
@@ -55,6 +56,13 @@ function PreviewCanvas({
     return () => observer.disconnect()
   }, [contentWidth, viewportWidth])
 
+  useEffect(
+    () => () => {
+      cleanupRef.current?.()
+    },
+    [],
+  )
+
   const handleLoad = () => {
     const frame = iframeRef.current
     const doc = frame?.contentDocument
@@ -63,23 +71,54 @@ function PreviewCanvas({
       return
     }
 
+    cleanupRef.current?.()
+
     const html = doc.documentElement
     const body = doc.body
-    const nextWidth = Math.max(
-      viewportWidth,
-      html?.scrollWidth ?? 0,
-      body?.scrollWidth ?? 0,
-      body?.getBoundingClientRect().width ?? 0,
-    )
-    const nextHeight = Math.max(
-      viewportHeight,
-      html?.scrollHeight ?? 0,
-      body?.scrollHeight ?? 0,
-      body?.getBoundingClientRect().height ?? 0,
-    )
 
-    setContentWidth(nextWidth)
-    setContentHeight(nextHeight)
+    const measure = () => {
+      const nextWidth = Math.max(
+        viewportWidth,
+        html?.scrollWidth ?? 0,
+        body?.scrollWidth ?? 0,
+        Math.ceil(body?.getBoundingClientRect().width ?? 0),
+      )
+      const nextHeight = Math.max(
+        viewportHeight,
+        html?.scrollHeight ?? 0,
+        body?.scrollHeight ?? 0,
+        Math.ceil(body?.getBoundingClientRect().height ?? 0),
+      )
+
+      setContentWidth(nextWidth)
+      setContentHeight(nextHeight)
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      measure()
+    })
+
+    resizeObserver.observe(html)
+    resizeObserver.observe(body)
+
+    const imageListeners = Array.from(doc.images).map((image) => {
+      const listener = () => measure()
+      image.addEventListener('load', listener)
+      image.addEventListener('error', listener)
+      return () => {
+        image.removeEventListener('load', listener)
+        image.removeEventListener('error', listener)
+      }
+    })
+
+    const timers = [0, 80, 220, 500, 900].map((delay) => window.setTimeout(measure, delay))
+    measure()
+
+    cleanupRef.current = () => {
+      resizeObserver.disconnect()
+      imageListeners.forEach((dispose) => dispose())
+      timers.forEach((timer) => window.clearTimeout(timer))
+    }
   }
 
   return (
@@ -96,9 +135,11 @@ function PreviewCanvas({
           onLoad={handleLoad}
           ref={iframeRef}
           sandbox=""
+          scrolling="no"
           srcDoc={srcDoc}
           style={{
             height: contentHeight,
+            overflow: 'hidden',
             transform: `scale(${scale})`,
             width: contentWidth,
           }}
@@ -111,6 +152,7 @@ function PreviewCanvas({
 
 function DesktopShell(props: Omit<GmailPreviewProps, 'mode'>) {
   const { senderAddress, senderName, sentAtLabel, srcDoc, subject, viewportHeight, viewportWidth } = props
+  const canvasKey = `${viewportWidth}:${viewportHeight}:${srcDoc.length}:${srcDoc.slice(0, 64)}`
 
   return (
     <section className="gmail-preview gmail-preview--desktop">
@@ -167,7 +209,7 @@ function DesktopShell(props: Omit<GmailPreviewProps, 'mode'>) {
             </div>
           </div>
 
-          <PreviewCanvas srcDoc={srcDoc} viewportHeight={viewportHeight} viewportWidth={viewportWidth} />
+          <PreviewCanvas key={canvasKey} srcDoc={srcDoc} viewportHeight={viewportHeight} viewportWidth={viewportWidth} />
         </section>
       </div>
     </section>
@@ -176,6 +218,7 @@ function DesktopShell(props: Omit<GmailPreviewProps, 'mode'>) {
 
 function MobileShell(props: Omit<GmailPreviewProps, 'mode'> & { compact?: boolean }) {
   const { compact = false, senderAddress, senderName, sentAtLabel, srcDoc, subject, viewportHeight, viewportWidth } = props
+  const canvasKey = `${viewportWidth}:${viewportHeight}:${srcDoc.length}:${srcDoc.slice(0, 64)}`
 
   return (
       <section className={`gmail-preview gmail-preview--mobile ${compact ? 'gmail-preview--tablet' : ''}`.trim()}>
@@ -219,7 +262,7 @@ function MobileShell(props: Omit<GmailPreviewProps, 'mode'> & { compact?: boolea
           </div>
         </div>
 
-        <PreviewCanvas srcDoc={srcDoc} viewportHeight={viewportHeight} viewportWidth={viewportWidth} />
+        <PreviewCanvas key={canvasKey} srcDoc={srcDoc} viewportHeight={viewportHeight} viewportWidth={viewportWidth} />
       </section>
     </section>
   )

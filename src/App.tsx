@@ -619,7 +619,7 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
   }, [companyId, currentBrandProfile])
 
   useEffect(() => {
-    if ((view !== 'editor' && view !== 'preview') || !draft) {
+    if ((view !== 'editor' && view !== 'preview' && !previewModalOpen) || !draft) {
       return
     }
 
@@ -640,7 +640,7 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
     return () => {
       cancelled = true
     }
-  }, [deferredMarkup, draft, view])
+  }, [deferredMarkup, draft, previewModalOpen, view])
 
   useEffect(() => {
     if (!notice) {
