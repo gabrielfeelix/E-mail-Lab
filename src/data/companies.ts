@@ -8,6 +8,8 @@ export type CompanyId =
   | 'odex'
   | 'tonante'
   | 'quati'
+  | 'skul'
+  | 'vinik'
 
 export type CompanyTheme = {
   bg: string
@@ -189,6 +191,50 @@ export const companies: CompanyDefinition[] = [
       surface: '#ffffff',
       surfaceAlt: '#fbfdf7',
       surfaceMuted: '#f2f8e7',
+    },
+  },
+  {
+    categories: ['Institucional', 'Comercial', 'Promocional', 'Suporte'],
+    id: 'skul',
+    name: 'SKUL',
+    theme: {
+      bg: '#f4f2f6',
+      border: '#e1d9e6',
+      borderStrong: '#cdbfd8',
+      ink: '#2a1b33',
+      muted: '#6c5b78',
+      primary: '#59008e',
+      primarySoft: '#efe6f6',
+      primaryStrong: '#3c0061',
+      sidebar: '#2f0a46',
+      sidebarBorder: '#3d1254',
+      sidebarMuted: '#bda7cb',
+      sidebarText: '#ffffff',
+      surface: '#ffffff',
+      surfaceAlt: '#f8f4fb',
+      surfaceMuted: '#eee7f3',
+    },
+  },
+  {
+    categories: ['Institucional', 'Comercial', 'Promocional', 'Suporte'],
+    id: 'vinik',
+    name: 'VINIK',
+    theme: {
+      bg: '#f2faf7',
+      border: '#d7ede6',
+      borderStrong: '#b7ddd2',
+      ink: '#0c2a22',
+      muted: '#4c6f64',
+      primary: '#00b980',
+      primarySoft: '#e5f8f1',
+      primaryStrong: '#00845b',
+      sidebar: '#004c3b',
+      sidebarBorder: '#0b5f4b',
+      sidebarMuted: '#a7d5c6',
+      sidebarText: '#ffffff',
+      surface: '#ffffff',
+      surfaceAlt: '#f6fcfa',
+      surfaceMuted: '#ecf7f3',
     },
   },
 ]

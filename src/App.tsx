@@ -284,8 +284,9 @@ export function App() {
   )
   const [companyId, setCompanyId] = useState<CompanyId>(() => loadSelectedCompany())
   const [session, setSession] = useState<Session | null>(null)
-const [profile, setProfile] = useState<ProfileRecord | null>(null)
+  const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [membershipCompanyIds, setMembershipCompanyIds] = useState<CompanyId[]>([])
+  const [membershipLoaded, setMembershipLoaded] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
   const [authSubmitting, setAuthSubmitting] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
@@ -344,14 +345,25 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
       return companies
     }
 
+    if (!membershipLoaded) {
+      return companies.filter((company) => company.id === companyId)
+    }
+
     const allowed = companies.filter((company) => membershipCompanyIds.includes(company.id))
     return allowed.length > 0 ? allowed : [companies.find((company) => company.id === 'oderco') ?? FALLBACK_COMPANY]
-  }, [membershipCompanyIds, profile?.isAdmin])
+  }, [companyId, membershipCompanyIds, membershipLoaded, profile?.isAdmin])
 
-  const currentCompany = useMemo(
-    () => accessibleCompanies.find((company) => company.id === companyId) ?? accessibleCompanies[0] ?? FALLBACK_COMPANY,
-    [accessibleCompanies, companyId],
-  )
+  const currentCompany = useMemo(() => {
+    if (!membershipLoaded) {
+      return companies.find((company) => company.id === companyId) ?? FALLBACK_COMPANY
+    }
+
+    return (
+      accessibleCompanies.find((company) => company.id === companyId) ??
+      accessibleCompanies[0] ??
+      FALLBACK_COMPANY
+    )
+  }, [accessibleCompanies, companyId, membershipLoaded])
   const currentUserName = profile?.fullName || session?.user.user_metadata.full_name || session?.user.email || 'Conta'
   const currentUserEmail = profile?.email || session?.user.email || ''
 
@@ -540,6 +552,7 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
   useEffect(() => {
     if (!session?.user.id) {
       setMembershipCompanyIds([])
+      setMembershipLoaded(false)
       return
     }
 
@@ -548,13 +561,18 @@ const [profile, setProfile] = useState<ProfileRecord | null>(null)
         setMembershipCompanyIds(companyIds.filter((value): value is CompanyId => isCompanyId(value))),
       )
       .catch(() => setMembershipCompanyIds([]))
+      .finally(() => setMembershipLoaded(true))
   }, [session?.user.id])
 
   useEffect(() => {
+    if (!membershipLoaded) {
+      return
+    }
+
     if (!accessibleCompanies.some((company) => company.id === companyId)) {
       setCompanyId(accessibleCompanies[0]?.id ?? DEFAULT_COMPANY_ID)
     }
-  }, [accessibleCompanies, companyId])
+  }, [accessibleCompanies, companyId, membershipLoaded])
 
   useEffect(() => {
     if (typeof window === 'undefined') {

@@ -383,6 +383,50 @@ values
       'surfaceAlt', '#fbfdf7',
       'surfaceMuted', '#f2f8e7'
     )
+  ),
+  (
+    'skul',
+    'SKUL',
+    null,
+    jsonb_build_object(
+      'bg', '#f4f2f6',
+      'border', '#e1d9e6',
+      'borderStrong', '#cdbfd8',
+      'ink', '#2a1b33',
+      'muted', '#6c5b78',
+      'primary', '#59008e',
+      'primarySoft', '#efe6f6',
+      'primaryStrong', '#3c0061',
+      'sidebar', '#2f0a46',
+      'sidebarBorder', '#3d1254',
+      'sidebarMuted', '#bda7cb',
+      'sidebarText', '#ffffff',
+      'surface', '#ffffff',
+      'surfaceAlt', '#f8f4fb',
+      'surfaceMuted', '#eee7f3'
+    )
+  ),
+  (
+    'vinik',
+    'VINIK',
+    null,
+    jsonb_build_object(
+      'bg', '#f2faf7',
+      'border', '#d7ede6',
+      'borderStrong', '#b7ddd2',
+      'ink', '#0c2a22',
+      'muted', '#4c6f64',
+      'primary', '#00b980',
+      'primarySoft', '#e5f8f1',
+      'primaryStrong', '#00845b',
+      'sidebar', '#004c3b',
+      'sidebarBorder', '#0b5f4b',
+      'sidebarMuted', '#a7d5c6',
+      'sidebarText', '#ffffff',
+      'surface', '#ffffff',
+      'surfaceAlt', '#f6fcfa',
+      'surfaceMuted', '#ecf7f3'
+    )
   )
 on conflict (id) do update
 set
@@ -422,7 +466,15 @@ values
   ('quati', 'Institucional'),
   ('quati', 'Promocao'),
   ('quati', 'Lancamento'),
-  ('quati', 'Relacionamento')
+  ('quati', 'Relacionamento'),
+  ('skul', 'Institucional'),
+  ('skul', 'Comercial'),
+  ('skul', 'Promocional'),
+  ('skul', 'Suporte'),
+  ('vinik', 'Institucional'),
+  ('vinik', 'Comercial'),
+  ('vinik', 'Promocional'),
+  ('vinik', 'Suporte')
 on conflict (company_id, name) do nothing;
 
 insert into public.company_brand_profiles (
