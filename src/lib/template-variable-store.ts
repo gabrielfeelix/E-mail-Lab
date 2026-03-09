@@ -12,14 +12,19 @@ type TemplateVariableRow = {
   updated_at: string
 }
 
+const variableGroupOrder = ['general', 'order', 'invoice', 'shipment', 'creditmemo', 'account', 'password', 'newsletter', 'rma']
+
 function groupVariableRows(rows: TemplateVariableRow[]) {
   const grouped = new Map<string, TemplateVariableGroup>()
 
   rows
     .slice()
     .sort((left, right) => {
-      if (left.group_label !== right.group_label) {
-        return left.group_label.localeCompare(right.group_label)
+      const leftGroupOrder = variableGroupOrder.indexOf(left.group_id)
+      const rightGroupOrder = variableGroupOrder.indexOf(right.group_id)
+
+      if (leftGroupOrder !== rightGroupOrder) {
+        return (leftGroupOrder === -1 ? Number.MAX_SAFE_INTEGER : leftGroupOrder) - (rightGroupOrder === -1 ? Number.MAX_SAFE_INTEGER : rightGroupOrder)
       }
 
       if (left.sort_order !== right.sort_order) {

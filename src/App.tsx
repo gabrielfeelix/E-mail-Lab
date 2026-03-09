@@ -314,6 +314,7 @@ export function App() {
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
   const [variableModalOpen, setVariableModalOpen] = useState(false)
   const [variableSearch, setVariableSearch] = useState('')
+  const [activeVariableGroupId, setActiveVariableGroupId] = useState('')
   const [duplicateState, setDuplicateState] = useState<DuplicateState | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TemplateRecord | null>(null)
   const [sectionDeleteTarget, setSectionDeleteTarget] = useState<SectionRecord | null>(null)
@@ -479,6 +480,14 @@ export function App() {
       }))
       .filter((group) => group.variables.length > 0)
   }, [variableGroups, variableSearch])
+
+  const activeVariableGroup = useMemo(() => {
+    return (
+      filteredVariableGroups.find((group) => group.id === activeVariableGroupId) ??
+      filteredVariableGroups[0] ??
+      null
+    )
+  }, [activeVariableGroupId, filteredVariableGroups])
 
   const deferredMarkup = useDeferredValue(draft?.markup ?? '')
   const markupStats = useMemo(() => describeMarkup(deferredMarkup), [deferredMarkup])
@@ -701,6 +710,19 @@ export function App() {
   }, [notice])
 
   useEffect(() => {
+    if (filteredVariableGroups.length === 0) {
+      if (activeVariableGroupId) {
+        setActiveVariableGroupId('')
+      }
+      return
+    }
+
+    if (!filteredVariableGroups.some((group) => group.id === activeVariableGroupId)) {
+      setActiveVariableGroupId(filteredVariableGroups[0]?.id ?? '')
+    }
+  }, [activeVariableGroupId, filteredVariableGroups])
+
+  useEffect(() => {
     if (view !== 'details' || !draft?.id) {
       setTemplateVersions([])
       return
@@ -880,6 +902,8 @@ export function App() {
   const handleOpenVariables = () => {
     startTransition(() => {
       setView('variables')
+      setVariableSearch('')
+      setActiveVariableGroupId(variableGroups[0]?.id ?? '')
       setDraft(null)
       setActiveTemplateId(null)
       setPreviewModalOpen(false)
@@ -1228,6 +1252,7 @@ export function App() {
 
   const handleOpenVariableModal = () => {
     setVariableSearch('')
+    setActiveVariableGroupId(variableGroups[0]?.id ?? '')
     setVariableModalOpen(true)
   }
 
@@ -1963,6 +1988,23 @@ export function App() {
                 </label>
               </section>
 
+              {filteredVariableGroups.length > 0 && (
+                <div className="variable-tabs" role="tablist">
+                  {filteredVariableGroups.map((group) => (
+                    <button
+                      aria-selected={activeVariableGroup?.id === group.id}
+                      className={activeVariableGroup?.id === group.id ? 'is-active' : ''}
+                      key={group.id}
+                      onClick={() => setActiveVariableGroupId(group.id)}
+                      role="tab"
+                      type="button"
+                    >
+                      {group.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {filteredVariableGroups.length === 0 ? (
                 <section className="empty-card">
                   <Filter size={30} />
@@ -1971,17 +2013,17 @@ export function App() {
                 </section>
               ) : (
                 <section className="variable-catalog">
-                  {filteredVariableGroups.map((group) => (
-                    <article className="details-panel variable-group" key={group.id}>
+                  {activeVariableGroup && (
+                    <article className="details-panel variable-group" key={activeVariableGroup.id}>
                       <div className="details-panel__header">
                         <div>
-                          <h3>{group.label}</h3>
-                          <p>{group.variables.length} variaveis disponiveis</p>
+                          <h3>{activeVariableGroup.label}</h3>
+                          <p>{activeVariableGroup.variables.length} variaveis disponiveis</p>
                         </div>
                       </div>
 
                       <div className="variable-list">
-                        {group.variables.map((variable) => (
+                        {activeVariableGroup.variables.map((variable) => (
                           <div className="variable-row" key={variable.id}>
                             <div className="variable-row__meta">
                               <strong>{variable.label}</strong>
@@ -1998,7 +2040,7 @@ export function App() {
                         ))}
                       </div>
                     </article>
-                  ))}
+                  )}
                 </section>
               )}
             </section>
@@ -2534,6 +2576,23 @@ export function App() {
                 />
               </label>
 
+              {filteredVariableGroups.length > 0 && (
+                <div className="variable-tabs variable-tabs--modal" role="tablist">
+                  {filteredVariableGroups.map((group) => (
+                    <button
+                      aria-selected={activeVariableGroup?.id === group.id}
+                      className={activeVariableGroup?.id === group.id ? 'is-active' : ''}
+                      key={group.id}
+                      onClick={() => setActiveVariableGroupId(group.id)}
+                      role="tab"
+                      type="button"
+                    >
+                      {group.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {filteredVariableGroups.length === 0 ? (
                 <div className="empty-card empty-card--inline">
                   <Filter size={24} />
@@ -2542,14 +2601,14 @@ export function App() {
                 </div>
               ) : (
                 <div className="variable-catalog variable-catalog--modal">
-                  {filteredVariableGroups.map((group) => (
-                    <article className="variable-group variable-group--modal" key={group.id}>
+                  {activeVariableGroup && (
+                    <article className="variable-group variable-group--modal" key={activeVariableGroup.id}>
                       <div className="variable-group__header">
-                        <strong>{group.label}</strong>
+                        <strong>{activeVariableGroup.label}</strong>
                       </div>
 
                       <div className="variable-list">
-                        {group.variables.map((variable) => (
+                        {activeVariableGroup.variables.map((variable) => (
                           <button
                             className="variable-row variable-row--interactive"
                             key={variable.id}
@@ -2564,7 +2623,7 @@ export function App() {
                         ))}
                       </div>
                     </article>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
