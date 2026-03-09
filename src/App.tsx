@@ -17,37 +17,38 @@ import {
   X,
 } from 'lucide-react'
 import { CategoryField } from './components/CategoryField'
-import { PreviewFrame } from './components/PreviewFrame'
+import { GmailPreview } from './components/GmailPreview'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
 import { sampleMarkup } from './data/presets'
+import { describeMarkup, inlineEmailDocument } from './lib/email'
 import {
-  buildEmailDocument,
-  buildEmailDocumentFromParts,
-  describeMarkup,
-  inlineEmailDocument,
-} from './lib/email'
+  buildCategoryMap,
+  deleteRemoteTemplate,
+  importTemplatesToRemote,
+  loadRemoteWorkspace,
+  saveRemoteTemplate,
+} from './lib/template-store'
 import type { TemplateRecord } from './types/template'
-
-type StoredTemplateCandidate = Partial<TemplateRecord> & {
-  css?: string
-  html?: string
-}
 
 type AppView = 'templates' | 'details' | 'editor' | 'preview'
 type PreviewDevice = 'desktop' | 'tablet' | 'mobile'
 
 type DeviceConfig = {
-  description: string
   height: number
   icon: typeof Monitor
   label: string
-  title: string
   width: number
 }
 
 type DuplicateState = {
   name: string
   template: TemplateRecord
+}
+
+type TemplateFormState = {
+  category: string
+  name: string
+  subject: string
 }
 
 const STORAGE_KEYS = ['email-lab/templates-v2', 'email-lab/templates'] as const
@@ -63,28 +64,22 @@ const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
 
 const devices = {
   desktop: {
-    description: 'Preview desktop para validar a largura principal do email.',
-    height: 900,
+    height: 920,
     icon: Monitor,
     label: 'Desktop',
-    title: 'Desktop',
     width: 1280,
   },
   mobile: {
-    description: 'Preview mobile para validar quebra, respiro e hierarquia.',
-    height: 760,
+    height: 740,
     icon: Smartphone,
     label: 'Mobile',
-    title: 'Mobile',
-    width: 390,
+    width: 420,
   },
   tablet: {
-    description: 'Preview intermediario para webviews e tablets.',
     height: 860,
     icon: TabletSmartphone,
     label: 'Tablet',
-    title: 'Tablet',
-    width: 768,
+    width: 820,
   },
 } satisfies Record<PreviewDevice, DeviceConfig>
 
@@ -94,47 +89,48 @@ function isCompanyId(value: string): value is CompanyId {
   return companies.some((company) => company.id === value)
 }
 
-function createDraft(companyId: CompanyId): TemplateRecord {
+function createBlankForm(): TemplateFormState {
+  return {
+    category: '',
+    name: '',
+    subject: '',
+  }
+}
+
+function createDraft(template: TemplateFormState, companyId: CompanyId): TemplateRecord {
   const timestamp = new Date().toISOString()
 
   return {
-    category: '',
+    category: template.category.trim(),
     companyId,
     createdAt: timestamp,
     id: crypto.randomUUID(),
     markup: sampleMarkup,
-    name: '',
-    subject: '',
+    name: template.name.trim(),
+    subject: template.subject.trim(),
     updatedAt: timestamp,
   }
 }
 
-function normalizeTemplate(record: StoredTemplateCandidate): TemplateRecord {
-  const markup =
-    typeof record.markup === 'string' && record.markup.trim().length > 0
-      ? record.markup
-      : typeof record.html === 'string' || typeof record.css === 'string'
-        ? buildEmailDocumentFromParts(record.html ?? '', record.css ?? '')
-        : sampleMarkup
-
+function normalizeTemplate(record: Partial<TemplateRecord>): TemplateRecord {
   const timestamp = typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString()
 
   return {
-    category: typeof record.category === 'string' ? record.category : 'Institucional',
+    category: typeof record.category === 'string' && record.category.trim() ? record.category : 'Institucional',
     companyId:
       typeof record.companyId === 'string' && isCompanyId(record.companyId)
         ? record.companyId
         : DEFAULT_COMPANY_ID,
     createdAt: typeof record.createdAt === 'string' ? record.createdAt : timestamp,
     id: typeof record.id === 'string' ? record.id : crypto.randomUUID(),
-    markup,
-    name: typeof record.name === 'string' ? record.name : 'template-sem-nome',
-    subject: typeof record.subject === 'string' ? record.subject : 'Sem assunto',
+    markup: typeof record.markup === 'string' && record.markup.trim() ? record.markup : sampleMarkup,
+    name: typeof record.name === 'string' && record.name.trim() ? record.name : 'template-sem-nome',
+    subject: typeof record.subject === 'string' && record.subject.trim() ? record.subject : 'Sem assunto',
     updatedAt: timestamp,
   }
 }
 
-function loadTemplates() {
+function loadLocalTemplates() {
   if (typeof window === 'undefined') {
     return []
   }
@@ -150,7 +146,7 @@ function loadTemplates() {
       const parsed = JSON.parse(stored)
 
       if (Array.isArray(parsed)) {
-        return parsed.map((record) => normalizeTemplate(record as StoredTemplateCandidate))
+        return parsed.map((record) => normalizeTemplate(record))
       }
     } catch {
       return []
@@ -169,35 +165,30 @@ function loadSelectedCompany() {
   return stored && isCompanyId(stored) ? stored : DEFAULT_COMPANY_ID
 }
 
-function getUniqueCategories(companyId: CompanyId, templates: TemplateRecord[]) {
-  const company = companies.find((item) => item.id === companyId)
-  const base = company?.categories ?? []
-  const current = templates
-    .filter((template) => template.companyId === companyId)
-    .map((template) => template.category.trim())
-    .filter(Boolean)
-
-  return [...new Set([...base, ...current])]
-}
-
 function buildDuplicateName(name: string) {
   return `${name} copy`
 }
 
 export function App() {
-  const [templates, setTemplates] = useState<TemplateRecord[]>(() => loadTemplates())
+  const [initialTemplates] = useState<TemplateRecord[]>(() => loadLocalTemplates())
+  const [templates, setTemplates] = useState<TemplateRecord[]>(initialTemplates)
+  const [categoryMap, setCategoryMap] = useState<Map<CompanyId, string[]>>(() =>
+    buildCategoryMap([], initialTemplates),
+  )
   const [companyId, setCompanyId] = useState<CompanyId>(() => loadSelectedCompany())
   const [view, setView] = useState<AppView>('templates')
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
   const [draft, setDraft] = useState<TemplateRecord | null>(null)
-  const [isCreatingNew, setIsCreatingNew] = useState(false)
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [createForm, setCreateForm] = useState<TemplateFormState>(createBlankForm)
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop')
   const [duplicateState, setDuplicateState] = useState<DuplicateState | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TemplateRecord | null>(null)
-  const [inlinedDocument, setInlinedDocument] = useState(() => ({
-    document: buildEmailDocument(sampleMarkup),
-    markup: sampleMarkup,
-  }))
+  const [copied, setCopied] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [isHydrating, setIsHydrating] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [inlinedDocument, setInlinedDocument] = useState(sampleMarkup)
 
   const currentCompany = useMemo(
     () => companies.find((company) => company.id === companyId) ?? FALLBACK_COMPANY,
@@ -217,45 +208,48 @@ export function App() {
     [companyId, sortedTemplates],
   )
 
-  const availableCategories = useMemo(
-    () => getUniqueCategories(companyId, templates),
-    [companyId, templates],
-  )
-
   const savedTemplate = useMemo(
     () => templates.find((template) => template.id === activeTemplateId) ?? null,
     [activeTemplateId, templates],
   )
 
-  const deferredMarkup = useDeferredValue(draft?.markup ?? sampleMarkup)
-  const markupStats = describeMarkup(deferredMarkup)
-  const basePreviewDocument = useMemo(() => buildEmailDocument(deferredMarkup), [deferredMarkup])
-  const currentPreviewDocument =
-    inlinedDocument.markup === deferredMarkup ? inlinedDocument.document : basePreviewDocument
+  const availableCategories = useMemo(() => {
+    const base = categoryMap.get(companyId) ?? currentCompany.categories
+    const fromTemplates = companyTemplates.map((template) => template.category)
+    return [...new Set([...base, ...fromTemplates])].sort((left, right) => left.localeCompare(right))
+  }, [categoryMap, companyId, companyTemplates, currentCompany.categories])
 
-  const isDirty =
-    draft !== null &&
-    savedTemplate !== null &&
-    (draft.name !== savedTemplate.name ||
+  const deferredMarkup = useDeferredValue(draft?.markup ?? sampleMarkup)
+  const markupStats = useMemo(() => describeMarkup(deferredMarkup), [deferredMarkup])
+
+  const isDirty = useMemo(() => {
+    if (!draft || !savedTemplate) {
+      return false
+    }
+
+    return (
+      draft.name !== savedTemplate.name ||
       draft.category !== savedTemplate.category ||
       draft.subject !== savedTemplate.subject ||
-      draft.markup !== savedTemplate.markup)
+      draft.markup !== savedTemplate.markup
+    )
+  }, [draft, savedTemplate])
 
   const breadcrumbs = useMemo(() => {
     if (view === 'templates') {
       return ['Templates']
     }
 
-    if (view === 'details') {
-      return ['Templates', isCreatingNew ? 'New Template' : draft?.name || 'Template Details']
-    }
-
     if (view === 'preview') {
       return ['Templates', draft?.name || 'Template', 'Preview']
     }
 
+    if (view === 'details') {
+      return ['Templates', draft?.name || 'Template', 'Details']
+    }
+
     return ['Templates', draft?.name || 'Template', 'Edit Design']
-  }, [draft?.name, isCreatingNew, view])
+  }, [draft?.name, view])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -267,25 +261,110 @@ export function App() {
   }, [companyId, templates])
 
   useEffect(() => {
+    let cancelled = false
+
+    async function hydrateWorkspace() {
+      try {
+        const remote = await loadRemoteWorkspace()
+        let nextTemplates = remote.templates
+
+        if (remote.templates.length === 0 && initialTemplates.length > 0) {
+          nextTemplates = await importTemplatesToRemote(initialTemplates)
+          if (!cancelled) {
+            setNotice('Templates locais importados para o Supabase.')
+          }
+        }
+
+        if (cancelled) {
+          return
+        }
+
+        setTemplates(nextTemplates)
+        setCategoryMap(buildCategoryMap(remote.categories, nextTemplates))
+      } catch {
+        if (!cancelled) {
+          setNotice('Supabase indisponivel. Mantendo os dados locais nesta sessao.')
+        }
+      } finally {
+        if (!cancelled) {
+          setIsHydrating(false)
+        }
+      }
+    }
+
+    hydrateWorkspace()
+
+    return () => {
+      cancelled = true
+    }
+  }, [initialTemplates])
+
+  useEffect(() => {
     if ((view !== 'editor' && view !== 'preview') || !draft) {
       return
     }
 
     let cancelled = false
 
-    inlineEmailDocument(deferredMarkup).then((nextDocument) => {
-      if (!cancelled) {
-        setInlinedDocument({
-          document: nextDocument,
-          markup: deferredMarkup,
-        })
-      }
-    })
+    inlineEmailDocument(deferredMarkup)
+      .then((nextDocument) => {
+        if (!cancelled) {
+          setInlinedDocument(nextDocument)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInlinedDocument(draft.markup)
+        }
+      })
 
     return () => {
       cancelled = true
     }
   }, [deferredMarkup, draft, view])
+
+  useEffect(() => {
+    if (!notice) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => setNotice(null), 3200)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
+
+  const syncTemplateInState = (template: TemplateRecord) => {
+    setTemplates((current) => {
+      const exists = current.some((item) => item.id === template.id)
+      return exists
+        ? current.map((item) => (item.id === template.id ? template : item))
+        : [template, ...current]
+    })
+
+    setCategoryMap((current) => {
+      const next = new Map(current)
+      const categories = next.get(template.companyId) ?? []
+
+      if (!categories.includes(template.category)) {
+        next.set(template.companyId, [...categories, template.category].sort((a, b) => a.localeCompare(b)))
+      }
+
+      return next
+    })
+  }
+
+  const persistTemplate = async (template: TemplateRecord) => {
+    setIsSaving(true)
+
+    try {
+      const saved = await saveRemoteTemplate(template)
+      syncTemplateInState(saved)
+      setDraft(saved)
+      setActiveTemplateId(saved.id)
+      return saved
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   const handleSelectCompany = (nextCompanyId: CompanyId) => {
     if (nextCompanyId === companyId) {
@@ -296,7 +375,6 @@ export function App() {
       setCompanyId(nextCompanyId)
       setView('templates')
       setDraft(null)
-      setIsCreatingNew(false)
       setActiveTemplateId(null)
       setPreviewDevice('desktop')
     })
@@ -306,35 +384,47 @@ export function App() {
     startTransition(() => {
       setView('templates')
       setDraft(null)
-      setIsCreatingNew(false)
       setActiveTemplateId(null)
+      setPreviewDevice('desktop')
     })
   }
 
   const handleOpenCreate = () => {
-    startTransition(() => {
-      setDraft(createDraft(companyId))
-      setIsCreatingNew(true)
-      setActiveTemplateId(null)
-      setView('details')
-      setPreviewDevice('desktop')
-    })
+    setCreateForm(createBlankForm())
+    setCreateModalOpen(true)
+  }
+
+  const handleCreateTemplate = async () => {
+    const nextDraft = createDraft(createForm, companyId)
+
+    if (!nextDraft.name || !nextDraft.subject || !nextDraft.category) {
+      return
+    }
+
+    try {
+      const saved = await persistTemplate(nextDraft)
+      startTransition(() => {
+        setCreateModalOpen(false)
+        setCreateForm(createBlankForm())
+        setDraft(saved)
+        setView('editor')
+      })
+    } catch {
+      setNotice('Nao foi possivel criar o template no Supabase.')
+    }
   }
 
   const handleOpenDetails = (template: TemplateRecord) => {
     startTransition(() => {
       setDraft({ ...template })
-      setIsCreatingNew(false)
       setActiveTemplateId(template.id)
       setView('details')
-      setPreviewDevice('desktop')
     })
   }
 
   const handleOpenPreview = (template: TemplateRecord) => {
     startTransition(() => {
       setDraft({ ...template })
-      setIsCreatingNew(false)
       setActiveTemplateId(template.id)
       setView('preview')
       setPreviewDevice('desktop')
@@ -342,38 +432,7 @@ export function App() {
   }
 
   const handleContinueFromDetails = () => {
-    if (!draft) {
-      return
-    }
-
-    const name = draft.name.trim()
-    const subject = draft.subject.trim()
-    const category = draft.category.trim()
-
-    if (!name || !subject || !category) {
-      return
-    }
-
-    if (isCreatingNew) {
-      const timestamp = new Date().toISOString()
-      const nextTemplate: TemplateRecord = {
-        ...draft,
-        category,
-        companyId,
-        createdAt: timestamp,
-        name,
-        subject,
-        updatedAt: timestamp,
-      }
-
-      startTransition(() => {
-        setTemplates((current) => [nextTemplate, ...current])
-        setDraft(nextTemplate)
-        setIsCreatingNew(false)
-        setActiveTemplateId(nextTemplate.id)
-        setView('editor')
-      })
-
+    if (!draft || !draft.name.trim() || !draft.subject.trim() || !draft.category.trim()) {
       return
     }
 
@@ -381,66 +440,42 @@ export function App() {
       current
         ? {
             ...current,
-            category,
-            name,
-            subject,
+            category: current.category.trim(),
+            name: current.name.trim(),
+            subject: current.subject.trim(),
           }
         : current,
     )
+
     setView('editor')
   }
 
-  const handleSaveDraft = () => {
-    if (!draft || !activeTemplateId) {
+  const handleSaveDraft = async () => {
+    if (!draft) {
       return
     }
 
-    const name = draft.name.trim()
-    const subject = draft.subject.trim()
-    const category = draft.category.trim()
-
-    if (!name || !subject || !category) {
-      return
-    }
-
-    const nextTemplate: TemplateRecord = {
+    const nextDraft: TemplateRecord = {
       ...draft,
-      category,
-      name,
-      subject,
+      category: draft.category.trim(),
+      name: draft.name.trim(),
+      subject: draft.subject.trim(),
       updatedAt: new Date().toISOString(),
     }
 
-    setTemplates((current) =>
-      current.map((template) => (template.id === nextTemplate.id ? nextTemplate : template)),
-    )
-    setDraft(nextTemplate)
-  }
-
-  const handleCancelDetails = () => {
-    if (isCreatingNew) {
-      handleOpenList()
+    if (!nextDraft.name || !nextDraft.subject || !nextDraft.category) {
       return
     }
 
-    if (savedTemplate) {
-      setDraft({ ...savedTemplate })
+    try {
+      await persistTemplate(nextDraft)
+      setNotice('Template salvo no Supabase.')
+    } catch {
+      setNotice('Nao foi possivel salvar o template no Supabase.')
     }
-
-    handleOpenList()
   }
 
-  const handleCancelEditor = () => {
-    if (!savedTemplate) {
-      handleOpenList()
-      return
-    }
-
-    setDraft({ ...savedTemplate })
-    setView('details')
-  }
-
-  const handleDuplicate = () => {
+  const handleDuplicate = async () => {
     if (!duplicateState) {
       return
     }
@@ -451,43 +486,60 @@ export function App() {
       return
     }
 
-    const timestamp = new Date().toISOString()
     const duplicatedTemplate: TemplateRecord = {
       ...duplicateState.template,
-      createdAt: timestamp,
+      createdAt: new Date().toISOString(),
       id: crypto.randomUUID(),
       name: nextName,
-      updatedAt: timestamp,
+      updatedAt: new Date().toISOString(),
     }
 
-    startTransition(() => {
-      setTemplates((current) => [duplicatedTemplate, ...current])
+    try {
+      const saved = await persistTemplate(duplicatedTemplate)
       setDuplicateState(null)
-      setDraft({ ...duplicatedTemplate })
-      setActiveTemplateId(duplicatedTemplate.id)
-      setIsCreatingNew(false)
+      setDraft(saved)
       setView('details')
-    })
+      setNotice('Template duplicado.')
+    } catch {
+      setNotice('Nao foi possivel duplicar o template.')
+    }
   }
 
-  const handleDeleteTemplate = () => {
+  const handleDeleteTemplate = async () => {
     if (!deleteTarget) {
       return
     }
 
-    setTemplates((current) => current.filter((template) => template.id !== deleteTarget.id))
+    try {
+      await deleteRemoteTemplate(deleteTarget.id)
+      setTemplates((current) => current.filter((template) => template.id !== deleteTarget.id))
 
-    if (activeTemplateId === deleteTarget.id) {
-      setDraft(null)
-      setActiveTemplateId(null)
-      setIsCreatingNew(false)
-      setView('templates')
+      if (activeTemplateId === deleteTarget.id) {
+        setDraft(null)
+        setActiveTemplateId(null)
+        setView('templates')
+      }
+
+      setDeleteTarget(null)
+      setNotice('Template excluido.')
+    } catch {
+      setNotice('Nao foi possivel excluir o template.')
+    }
+  }
+
+  const handleCopyMarkup = async () => {
+    if (!draft) {
+      return
     }
 
-    setDeleteTarget(null)
+    await navigator.clipboard.writeText(draft.markup)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1400)
   }
 
   const currentDevice = devices[previewDevice]
+  const senderAddress = `no-reply@${currentCompany.id}.com`
+  const sentAtLabel = draft ? dateFormatter.format(new Date(draft.updatedAt)) : dateFormatter.format(new Date())
 
   return (
     <main className="shell" style={companyThemeStyle(currentCompany.theme)}>
@@ -527,7 +579,7 @@ export function App() {
 
         <div className="sidebar__group">
           <span className="sidebar__group-label">Workspace</span>
-          <nav className="sidebar__nav" aria-label="Workspace">
+          <nav aria-label="Workspace" className="sidebar__nav">
             <button
               className={`sidebar__nav-item ${view === 'templates' ? 'is-active' : ''}`.trim()}
               onClick={handleOpenList}
@@ -559,6 +611,8 @@ export function App() {
         </header>
 
         <div className="shell__body">
+          {notice && <div className="notice-banner">{notice}</div>}
+
           {view === 'templates' && (
             <section className="page">
               <header className="page-heading">
@@ -573,18 +627,20 @@ export function App() {
                 </button>
               </header>
 
-              {companyTemplates.length === 0 ? (
+              {isHydrating ? (
+                <section className="empty-card">
+                  <h3>Carregando templates</h3>
+                  <p>Sincronizando os dados do Supabase para esta empresa.</p>
+                </section>
+              ) : companyTemplates.length === 0 ? (
                 <section className="empty-card">
                   <FolderOpen size={30} />
-                  <h3>You don't have any email templates yet</h3>
-                  <p>
-                    Design, edit and organize the HTML email templates for {currentCompany.name} in
-                    one place.
-                  </p>
+                  <h3>You do not have any email templates yet</h3>
+                  <p>Crie o primeiro template de {currentCompany.name} para comecar a trabalhar no editor.</p>
                 </section>
               ) : (
                 <section className="table-card">
-                  <table className="template-table" aria-label="Lista de templates">
+                  <table aria-label="Lista de templates" className="template-table">
                     <thead>
                       <tr>
                         <th>Template name</th>
@@ -598,11 +654,7 @@ export function App() {
                       {companyTemplates.map((template) => (
                         <tr key={template.id}>
                           <td>
-                            <button
-                              className="table-link"
-                              onClick={() => handleOpenDetails(template)}
-                              type="button"
-                            >
+                            <button className="table-link" onClick={() => handleOpenDetails(template)} type="button">
                               {template.name}
                             </button>
                           </td>
@@ -664,11 +716,14 @@ export function App() {
           )}
 
           {view === 'details' && draft && (
-            <section className="page">
-              <div className="details-shell">
-                <header className="details-shell__header">
-                  <h2>Template Details</h2>
-                  <p>Defina as informacoes principais antes de entrar na edicao do template.</p>
+            <section className="details-page">
+              <div className="details-page__panel">
+                <header className="details-page__header">
+                  <div>
+                    <span className="details-page__eyebrow">Template Details</span>
+                    <h2>Template Details</h2>
+                    <p>Defina as informacoes principais antes de entrar na edicao do template.</p>
+                  </div>
                 </header>
 
                 <div className="details-fields">
@@ -723,54 +778,47 @@ export function App() {
                   />
                 </div>
 
-                <footer className="details-shell__actions">
+                <div className="details-page__meta">
+                  <div>
+                    <span>Empresa</span>
+                    <strong>{currentCompany.name}</strong>
+                  </div>
+                  <div>
+                    <span>Atualizado</span>
+                    <strong>{dateFormatter.format(new Date(draft.updatedAt))}</strong>
+                  </div>
+                  <div>
+                    <span>Formato</span>
+                    <strong>HTML</strong>
+                  </div>
+                </div>
+
+                <div className="details-page__actions">
                   <button className="primary-button" onClick={handleContinueFromDetails} type="button">
                     Continue
                   </button>
-                  <button className="secondary-button" onClick={handleCancelDetails} type="button">
+                  <button className="secondary-button" onClick={handleOpenList} type="button">
                     Cancel
                   </button>
-                </footer>
+                </div>
               </div>
             </section>
           )}
 
           {view === 'preview' && draft && (
-            <section className="page page--editor">
-              <div className="editor-layout editor-layout--preview">
-                <section className="editor-pane editor-pane--summary">
-                  <div className="editor-pane__header">
-                    <h3>{draft.name}</h3>
-                    <p>Preview do template sem abrir o editor.</p>
+            <section className="page">
+              <section className="preview-shell">
+                <header className="preview-shell__header">
+                  <div>
+                    <span className="details-page__eyebrow">Preview</span>
+                    <h2>{draft.name}</h2>
+                    <p>Leitura contextualizada antes de abrir o editor.</p>
                   </div>
 
-                  <div className="template-summary">
-                    <div>
-                      <span>Subject</span>
-                      <strong>{draft.subject}</strong>
-                    </div>
-                    <div>
-                      <span>Category</span>
-                      <strong>{draft.category}</strong>
-                    </div>
-                    <div>
-                      <span>Company</span>
-                      <strong>{currentCompany.name}</strong>
-                    </div>
-                    <div>
-                      <span>Last update</span>
-                      <strong>{dateFormatter.format(new Date(draft.updatedAt))}</strong>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="preview-pane">
-                  <div className="preview-pane__header">
-                    <h3>Preview</h3>
-                    <div className="device-switch" role="tablist" aria-label="Dispositivo">
+                  <div className="preview-shell__actions">
+                    <div aria-label="Dispositivo" className="device-switch" role="tablist">
                       {deviceEntries.map(([deviceId, device]) => {
                         const Icon = device.icon
-
                         return (
                           <button
                             aria-label={device.label}
@@ -788,56 +836,51 @@ export function App() {
                       })}
                     </div>
                   </div>
+                </header>
 
-                  <PreviewFrame
-                    description={currentDevice.description}
-                    showHeader={false}
-                    srcDoc={currentPreviewDocument}
-                    title={currentDevice.title}
+                <div style={{ padding: '24px' }}>
+                  <GmailPreview
+                    senderAddress={senderAddress}
+                    senderName={currentCompany.name}
+                    sentAtLabel={sentAtLabel}
+                    srcDoc={inlinedDocument}
+                    subject={draft.subject}
                     viewportHeight={currentDevice.height}
                     viewportWidth={currentDevice.width}
                   />
-                </section>
-              </div>
+                </div>
 
-              <footer className="bottom-bar">
-                <button className="secondary-button" onClick={handleOpenList} type="button">
-                  Cancel
-                </button>
-                <button
-                  className="primary-button"
-                  onClick={() => handleOpenDetails(savedTemplate ?? draft)}
-                  type="button"
-                >
-                  <FilePenLine size={16} />
-                  Edit Template
-                </button>
-              </footer>
+                <footer className="bottom-bar">
+                  <button className="secondary-button" onClick={handleOpenList} type="button">
+                    Cancel
+                  </button>
+                  <button className="primary-button" onClick={() => setView('editor')} type="button">
+                    <FilePenLine size={16} />
+                    Edit Template
+                  </button>
+                </footer>
+              </section>
             </section>
           )}
 
           {view === 'editor' && draft && (
             <section className="page page--editor">
-              <div className="editor-layout">
-                <section className="editor-pane">
-                  <div className="editor-pane__header">
-                    <div className="editor-pane__tabs">
+              <div className="editor-workbench">
+                <section className="editor-column">
+                  <div className="editor-column__top">
+                    <div className="editor-column__tabs">
                       <button className="is-active" type="button">
                         Code Editor
                       </button>
                     </div>
-                    <p>
-                      Edit the email template in HTML, preview how it looks and validate the final
-                      structure before saving.
-                    </p>
+                    <p>Edite o HTML completo na esquerda. O preview simula um contexto de leitura de Gmail.</p>
                   </div>
 
-                  <div className="editor-pane__surface">
-                    <div className="editor-pane__surface-head">
-                      <span className="editor-pill editor-pill--active">HTML</span>
-                      <span className="editor-meta">
-                        {markupStats.lines} lines ·{' '}
-                        {markupStats.hasStyleTag ? 'style tag presente' : 'sem style tag'}
+                  <div className="editor-column__surface">
+                    <div className="editor-column__surface-top">
+                      <span className="editor-badge">HTML</span>
+                      <span className="editor-stats">
+                        {markupStats.lines} lines | {markupStats.hasMediaQuery ? 'media queries' : 'sem media queries'}
                       </span>
                     </div>
 
@@ -860,13 +903,16 @@ export function App() {
                   </div>
                 </section>
 
-                <section className="preview-pane">
-                  <div className="preview-pane__header">
-                    <h3>Preview</h3>
-                    <div className="device-switch" role="tablist" aria-label="Dispositivo">
+                <section className="preview-column">
+                  <div className="preview-column__top">
+                    <div>
+                      <h3>Preview</h3>
+                      <p>Shell visual separada do markup. O copy continua trazendo apenas o HTML do template.</p>
+                    </div>
+
+                    <div aria-label="Dispositivo" className="device-switch" role="tablist">
                       {deviceEntries.map(([deviceId, device]) => {
                         const Icon = device.icon
-
                         return (
                           <button
                             aria-label={device.label}
@@ -885,11 +931,12 @@ export function App() {
                     </div>
                   </div>
 
-                  <PreviewFrame
-                    description={currentDevice.description}
-                    showHeader={false}
-                    srcDoc={currentPreviewDocument}
-                    title={currentDevice.title}
+                  <GmailPreview
+                    senderAddress={senderAddress}
+                    senderName={currentCompany.name}
+                    sentAtLabel={sentAtLabel}
+                    srcDoc={inlinedDocument}
+                    subject={draft.subject}
                     viewportHeight={currentDevice.height}
                     viewportWidth={currentDevice.width}
                   />
@@ -897,12 +944,16 @@ export function App() {
               </div>
 
               <footer className="bottom-bar">
-                <button className="secondary-button" onClick={handleCancelEditor} type="button">
+                <button className="secondary-button" onClick={() => setView('details')} type="button">
                   Cancel
                 </button>
-                <button className="primary-button" disabled={!isDirty} onClick={handleSaveDraft} type="button">
+                <button className="secondary-button" onClick={handleCopyMarkup} type="button">
+                  <Copy size={16} />
+                  {copied ? 'Copiado' : 'Copiar markup'}
+                </button>
+                <button className="primary-button" disabled={!isDirty || isSaving} onClick={handleSaveDraft} type="button">
                   <Save size={16} />
-                  Save
+                  {isSaving ? 'Salvando' : 'Save'}
                 </button>
                 <span className="bottom-bar__status">{isDirty ? 'Unsaved' : 'Saved'}</span>
               </footer>
@@ -911,17 +962,83 @@ export function App() {
         </div>
       </section>
 
+      {createModalOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-modal="true" className="modal-card modal-card--wide" role="dialog">
+            <header className="modal-card__header">
+              <div>
+                <h3>Template Details</h3>
+                <p>Preencha os dados principais e continue para o editor.</p>
+              </div>
+              <button aria-label="Fechar" className="icon-button" onClick={() => setCreateModalOpen(false)} type="button">
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="modal-card__body">
+              <label className="field">
+                <span>Template name *</span>
+                <input
+                  autoFocus
+                  onChange={(event) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  value={createForm.name}
+                />
+              </label>
+
+              <label className="field">
+                <span>Subject *</span>
+                <input
+                  onChange={(event) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      subject: event.target.value,
+                    }))
+                  }
+                  value={createForm.subject}
+                />
+              </label>
+
+              <CategoryField
+                categories={availableCategories}
+                label="Category *"
+                onChange={(value) =>
+                  setCreateForm((current) => ({
+                    ...current,
+                    category: value,
+                  }))
+                }
+                value={createForm.category}
+              />
+            </div>
+
+            <footer className="modal-card__actions">
+              <button className="secondary-button" onClick={() => setCreateModalOpen(false)} type="button">
+                Cancel
+              </button>
+              <button
+                className="primary-button"
+                disabled={!createForm.name.trim() || !createForm.subject.trim() || !createForm.category.trim() || isSaving}
+                onClick={handleCreateTemplate}
+                type="button"
+              >
+                Continue
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
       {duplicateState && (
         <div className="modal-backdrop" role="presentation">
           <section aria-modal="true" className="modal-card" role="dialog">
             <header className="modal-card__header">
               <h3>Duplicate template</h3>
-              <button
-                aria-label="Fechar"
-                className="icon-button"
-                onClick={() => setDuplicateState(null)}
-                type="button"
-              >
+              <button aria-label="Fechar" className="icon-button" onClick={() => setDuplicateState(null)} type="button">
                 <X size={16} />
               </button>
             </header>
@@ -950,7 +1067,12 @@ export function App() {
               <button className="secondary-button" onClick={() => setDuplicateState(null)} type="button">
                 Cancel
               </button>
-              <button className="primary-button" onClick={handleDuplicate} type="button">
+              <button
+                className="primary-button"
+                disabled={isSaving || !duplicateState.name.trim()}
+                onClick={handleDuplicate}
+                type="button"
+              >
                 Duplicate
               </button>
             </footer>
@@ -963,20 +1085,14 @@ export function App() {
           <section aria-modal="true" className="modal-card" role="dialog">
             <header className="modal-card__header">
               <h3>Delete template</h3>
-              <button
-                aria-label="Fechar"
-                className="icon-button"
-                onClick={() => setDeleteTarget(null)}
-                type="button"
-              >
+              <button aria-label="Fechar" className="icon-button" onClick={() => setDeleteTarget(null)} type="button">
                 <X size={16} />
               </button>
             </header>
 
             <div className="modal-card__body">
               <p>
-                Delete <strong>{deleteTarget.name}</strong>? This action removes the template from
-                the current company list.
+                Delete <strong>{deleteTarget.name}</strong>? Esta acao remove o template da lista atual.
               </p>
             </div>
 
@@ -984,7 +1100,7 @@ export function App() {
               <button className="secondary-button" onClick={() => setDeleteTarget(null)} type="button">
                 Cancel
               </button>
-              <button className="danger-button" onClick={handleDeleteTemplate} type="button">
+              <button className="danger-button" disabled={isSaving} onClick={handleDeleteTemplate} type="button">
                 Delete
               </button>
             </footer>

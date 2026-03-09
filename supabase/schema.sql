@@ -268,6 +268,43 @@ alter table public.companies enable row level security;
 alter table public.template_categories enable row level security;
 alter table public.email_templates enable row level security;
 
+drop policy if exists "public companies read" on public.companies;
+create policy "public companies read"
+on public.companies
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "public categories read" on public.template_categories;
+create policy "public categories read"
+on public.template_categories
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "public categories write" on public.template_categories;
+create policy "public categories write"
+on public.template_categories
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "public templates read" on public.email_templates;
+create policy "public templates read"
+on public.email_templates
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "public templates write" on public.email_templates;
+create policy "public templates write"
+on public.email_templates
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
 comment on table public.companies is
   'Empresas/projetos do E-mail Lab com tema visual e nota opcional.';
 
