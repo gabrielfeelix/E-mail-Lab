@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 
-type EditorSelectionSnapshot = {
-  end: number
-  scrollLeft: number
-  scrollTop: number
-  start: number
-}
-
 type MarkupEditorProps = {
-  onChange: (value: string, selection: EditorSelectionSnapshot) => void
+  onChange: (value: string) => void
   textareaRef: RefObject<HTMLTextAreaElement | null>
   value: string
 }
@@ -190,14 +183,7 @@ export function MarkupEditor(props: MarkupEditorProps) {
         <textarea
           aria-label="Editor de markup do email"
           className="editor-textarea"
-          onChange={(event) =>
-            onChange(event.target.value, {
-              end: event.target.selectionEnd ?? event.target.value.length,
-              scrollLeft: event.target.scrollLeft,
-              scrollTop: event.target.scrollTop,
-              start: event.target.selectionStart ?? event.target.value.length,
-            })
-          }
+          onChange={(event) => onChange(event.target.value)}
           ref={textareaRef}
           spellCheck={false}
           value={value}

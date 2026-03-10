@@ -80,6 +80,9 @@ function PreviewCanvas({
       return
     }
 
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+
     let sentinel = body.querySelector('[data-preview-sentinel="true"]') as HTMLDivElement | null
 
     if (!sentinel) {
@@ -103,9 +106,14 @@ function PreviewCanvas({
     const measure = () => {
       const scrollingElement = doc.scrollingElement
       const bodyRect = body?.getBoundingClientRect()
+      const htmlRect = html?.getBoundingClientRect()
       const bodyTop = bodyRect?.top ?? 0
       const bodyLeft = bodyRect?.left ?? 0
       const sentinelRect = sentinel?.getBoundingClientRect()
+      const lastElementRect = body.lastElementChild?.getBoundingClientRect()
+      const range = doc.createRange()
+      range.selectNodeContents(body)
+      const rangeRect = range.getBoundingClientRect()
       const descendants = Array.from(body?.querySelectorAll('*') ?? [])
       const furthestRight = descendants.reduce((max, element) => {
         const rect = element.getBoundingClientRect()
@@ -115,11 +123,19 @@ function PreviewCanvas({
         const rect = element.getBoundingClientRect()
         return Math.max(max, rect.bottom - bodyTop)
       }, Math.ceil(bodyRect?.height ?? 0))
+      const furthestOffsetBottom = descendants.reduce((max, element) => {
+        if (!(element instanceof HTMLElement)) {
+          return max
+        }
+
+        return Math.max(max, element.scrollHeight + element.offsetTop, element.offsetHeight + element.offsetTop)
+      }, 0)
       const nextWidth = Math.max(
         viewportWidth,
         scrollingElement?.scrollWidth ?? 0,
         html?.scrollWidth ?? 0,
         body?.scrollWidth ?? 0,
+        Math.ceil(htmlRect?.width ?? 0),
         Math.ceil(bodyRect?.width ?? 0),
         Math.ceil(furthestRight),
       )
@@ -130,8 +146,12 @@ function PreviewCanvas({
         body?.scrollHeight ?? 0,
         html?.offsetHeight ?? 0,
         body?.offsetHeight ?? 0,
+        Math.ceil(htmlRect?.height ?? 0),
         Math.ceil(bodyRect?.height ?? 0),
         Math.ceil(furthestBottom),
+        Math.ceil(furthestOffsetBottom),
+        Math.ceil(rangeRect?.height ?? 0),
+        Math.ceil((lastElementRect?.bottom ?? 0) - bodyTop),
         Math.ceil((sentinelRect?.bottom ?? 0) - bodyTop),
       )
 

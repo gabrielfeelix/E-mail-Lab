@@ -1515,6 +1515,19 @@ export function App() {
     setPreviewDevice(deviceId)
   }
 
+  const isCurrentTemplateVersion = (version: TemplateVersionRecord) => {
+    if (!savedTemplate) {
+      return false
+    }
+
+    return (
+      version.category === savedTemplate.category &&
+      version.markup === savedTemplate.markup &&
+      version.name === savedTemplate.name &&
+      version.subject === savedTemplate.subject
+    )
+  }
+
   const handleSignIn = async (email: string, password: string) => {
     setAuthSubmitting(true)
     try {
@@ -2383,9 +2396,10 @@ export function App() {
                     ) : (
                       <div className="version-list">
                         {templateVersions.map((version) => (
-                          <article className="version-card" key={version.id}>
+                          <article className={`version-card ${isCurrentTemplateVersion(version) ? 'is-current' : ''}`.trim()} key={version.id}>
                             <div className="version-card__meta">
                               <strong>Versao {version.versionNumber}</strong>
+                              {isCurrentTemplateVersion(version) && <span className="version-card__status">Atual</span>}
                               <span>{dateFormatter.format(new Date(version.createdAt))}</span>
                             </div>
                             <div className="version-card__info">
@@ -2401,13 +2415,15 @@ export function App() {
                               >
                                 Preview
                               </button>
-                              <button
-                                className="secondary-button"
-                                onClick={() => handleRestoreVersion(version)}
-                                type="button"
-                              >
-                                Restaurar
-                              </button>
+                              {!isCurrentTemplateVersion(version) && (
+                                <button
+                                  className="secondary-button"
+                                  onClick={() => handleRestoreVersion(version)}
+                                  type="button"
+                                >
+                                  Restaurar
+                                </button>
+                              )}
                             </div>
                           </article>
                         ))}
@@ -2449,8 +2465,7 @@ export function App() {
                     </div>
 
                     <MarkupEditor
-                      onChange={(value, selection) => {
-                        pendingEditorSelectionRef.current = selection
+                      onChange={(value) =>
                         setDraft((current) =>
                           current
                             ? {
@@ -2459,7 +2474,7 @@ export function App() {
                               }
                             : current,
                         )
-                      }}
+                      }
                       textareaRef={editorTextareaRef}
                       value={draft.markup}
                     />

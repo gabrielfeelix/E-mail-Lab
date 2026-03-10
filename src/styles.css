@@ -1955,9 +1955,9 @@ button {
 
 .version-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
   padding: 16px 18px;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1971,11 +1971,30 @@ button {
   min-width: 0;
 }
 
+.version-card__meta {
+  align-content: start;
+}
+
+.version-card__status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .version-card__actions {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   justify-self: end;
+  align-self: center;
 }
 
 .version-card__meta span,
@@ -2320,6 +2339,14 @@ button {
 
   .details-list div {
     grid-template-columns: 1fr;
+  }
+
+  .version-card {
+    grid-template-columns: 1fr;
+  }
+
+  .version-card__actions {
+    justify-self: start;
   }
 }
 
