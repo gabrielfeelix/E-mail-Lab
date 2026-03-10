@@ -990,6 +990,19 @@ button {
   will-change: transform;
 }
 
+.markup-editor__highlight-inner .editor-token--tag,
+.markup-editor__highlight-inner .editor-token--tag-name,
+.markup-editor__highlight-inner .editor-token--attr,
+.markup-editor__highlight-inner .editor-token--string,
+.markup-editor__highlight-inner .editor-token--value,
+.markup-editor__highlight-inner .editor-token--comment,
+.markup-editor__highlight-inner .editor-token--selector,
+.markup-editor__highlight-inner .editor-token--property,
+.markup-editor__highlight-inner .editor-token--variable {
+  display: contents;
+  font-weight: inherit;
+}
+
 .editor-token--tag,
 .editor-token--tag-name {
   color: #ff6b6b;
@@ -1018,7 +1031,6 @@ button {
 
 .editor-token--variable {
   color: #d58cff;
-  font-weight: 700;
 }
 
 .preview-column {

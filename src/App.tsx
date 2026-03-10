@@ -529,6 +529,22 @@ export function App() {
     )
   }, [draft, savedTemplate])
 
+  function confirmDiscardChanges() {
+    if (!isDirty) {
+      return true
+    }
+
+    return window.confirm('Voce tem alteracoes nao salvas. Se sair agora, elas serao descartadas.')
+  }
+
+  function resetDraftToSavedTemplate() {
+    if (!savedTemplate) {
+      return
+    }
+
+    setDraft({ ...savedTemplate })
+  }
+
   const breadcrumbs = useMemo(() => {
     if (view === 'templates') {
       return ['Templates']
@@ -568,7 +584,7 @@ export function App() {
     }
 
     if (index === 1 && draft && (view === 'editor' || view === 'details')) {
-      handleOpenDetails(draft)
+      handleOpenDetails(savedTemplate ?? draft)
     }
   }
 
@@ -695,6 +711,20 @@ export function App() {
       cancelled = true
     }
   }, [initialTemplates, session])
+
+  useEffect(() => {
+    if (!isDirty) {
+      return
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isDirty])
 
   useEffect(() => {
     setBrandProfileForm(currentBrandProfile ? mapBrandProfileToForm(currentBrandProfile) : createBrandProfileForm(companyId))
@@ -900,6 +930,10 @@ export function App() {
       return
     }
 
+    if (!confirmDiscardChanges()) {
+      return
+    }
+
     startTransition(() => {
       setCompanyId(nextCompanyId)
       setView('templates')
@@ -912,6 +946,10 @@ export function App() {
   }
 
   const handleOpenList = () => {
+    if (!confirmDiscardChanges()) {
+      return
+    }
+
     startTransition(() => {
       setView('templates')
       setDraft(null)
@@ -923,6 +961,10 @@ export function App() {
   }
 
   const handleOpenSections = () => {
+    if (!confirmDiscardChanges()) {
+      return
+    }
+
     startTransition(() => {
       setView('sections')
       setDraft(null)
@@ -933,6 +975,10 @@ export function App() {
   }
 
   const handleOpenBrand = () => {
+    if (!confirmDiscardChanges()) {
+      return
+    }
+
     startTransition(() => {
       setView('brand')
       setDraft(null)
@@ -943,6 +989,10 @@ export function App() {
   }
 
   const handleOpenVariables = () => {
+    if (!confirmDiscardChanges()) {
+      return
+    }
+
     startTransition(() => {
       setView('variables')
       setVariableSearch('')
@@ -955,6 +1005,10 @@ export function App() {
   }
 
   const handleOpenAccess = () => {
+    if (!confirmDiscardChanges()) {
+      return
+    }
+
     startTransition(() => {
       setView('access')
       setDraft(null)
@@ -1094,6 +1148,10 @@ export function App() {
   }
 
   const handleOpenDetails = (template: TemplateRecord, editMode = false) => {
+    if ((view === 'editor' || detailsEditMode || template.id !== activeTemplateId) && !confirmDiscardChanges()) {
+      return
+    }
+
     startTransition(() => {
       setDetailsEditMode(editMode)
       setDraft({ ...template })
@@ -1103,6 +1161,10 @@ export function App() {
   }
 
   const handleOpenPreview = (template: TemplateRecord) => {
+    if ((view === 'editor' || detailsEditMode || template.id !== activeTemplateId) && !confirmDiscardChanges()) {
+      return
+    }
+
     startTransition(() => {
       setPreviewTemplate({ ...template })
       setDetailsEditMode(false)
@@ -1183,6 +1245,15 @@ export function App() {
     }
   }
 
+  const handleCancelDetailsEdit = () => {
+    if (!confirmDiscardChanges()) {
+      return
+    }
+
+    resetDraftToSavedTemplate()
+    setDetailsEditMode(false)
+  }
+
   const handleSaveDraft = async () => {
     if (!draft) {
       return
@@ -1258,6 +1329,16 @@ export function App() {
     } catch {
       setNotice('Nao foi possivel excluir o template.')
     }
+  }
+
+  const handleCancelEditor = () => {
+    if (!confirmDiscardChanges()) {
+      return
+    }
+
+    resetDraftToSavedTemplate()
+    setDetailsEditMode(false)
+    setView('details')
   }
 
   const handleRestoreVersion = async (version: TemplateVersionRecord) => {
@@ -2248,7 +2329,7 @@ export function App() {
                       <div className="details-page__actions">
                         {detailsEditMode ? (
                           <>
-                            <button className="secondary-button" onClick={() => setDetailsEditMode(false)} type="button">
+                            <button className="secondary-button" onClick={handleCancelDetailsEdit} type="button">
                               Cancelar
                             </button>
                             <button className="primary-button" onClick={handleSaveDetails} type="button">
@@ -2525,7 +2606,7 @@ export function App() {
 
               {!aiModalOpen && !variableModalOpen && (
                 <footer className="bottom-bar">
-                <button className="secondary-button" onClick={() => setView('details')} type="button">
+                <button className="secondary-button" onClick={handleCancelEditor} type="button">
                   Cancelar
                 </button>
                 <button className="secondary-button" onClick={handleOpenSendTestModal} type="button">
