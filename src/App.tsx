@@ -1143,10 +1143,6 @@ export function App() {
 
     startTransition(() => {
       setPreviewTemplate({ ...template })
-      setDetailsEditMode(false)
-      setDraft({ ...template })
-      setActiveTemplateId(template.id)
-      setView('details')
       setPreviewDevice('mobile')
       setPreviewModalOpen(true)
     })
