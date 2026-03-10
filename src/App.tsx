@@ -306,6 +306,7 @@ export function App() {
   const [authSubmitting, setAuthSubmitting] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [detailsEditMode, setDetailsEditMode] = useState(false)
   const [view, setView] = useState<AppView>('templates')
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
   const [draft, setDraft] = useState<TemplateRecord | null>(null)
@@ -1059,8 +1060,9 @@ export function App() {
     }
   }
 
-  const handleOpenDetails = (template: TemplateRecord) => {
+  const handleOpenDetails = (template: TemplateRecord, editMode = false) => {
     startTransition(() => {
+      setDetailsEditMode(editMode)
       setDraft({ ...template })
       setActiveTemplateId(template.id)
       setView('details')
@@ -1069,6 +1071,7 @@ export function App() {
 
   const handleOpenPreview = (template: TemplateRecord) => {
     startTransition(() => {
+      setDetailsEditMode(false)
       setDraft({ ...template })
       setActiveTemplateId(template.id)
       setView('details')
@@ -1094,6 +1097,34 @@ export function App() {
     )
 
     setView('editor')
+  }
+
+  const handleSaveDetails = async () => {
+    if (!draft) {
+      return
+    }
+
+    const nextDraft: TemplateRecord = {
+      ...draft,
+      category: sanitizeSingleLineText(draft.category),
+      name: sanitizeSingleLineText(draft.name),
+      subject: sanitizeSingleLineText(draft.subject),
+      updatedAt: new Date().toISOString(),
+    }
+
+    if (!nextDraft.name || !nextDraft.subject || !nextDraft.category) {
+      setNotice('Preencha nome, assunto e categoria antes de salvar.')
+      return
+    }
+
+    try {
+      const saved = await persistTemplate(nextDraft)
+      setDraft(saved)
+      setDetailsEditMode(false)
+      setNotice('Detalhes do template salvos no Supabase.')
+    } catch {
+      setNotice('Nao foi possivel salvar os detalhes do template.')
+    }
   }
 
   const handleSaveDraft = async () => {
@@ -1727,7 +1758,7 @@ export function App() {
                         <tr key={template.id}>
                           <td>
                             <button className="table-link" onClick={() => handleOpenDetails(template)} type="button">
-                              {template.name}
+                              <span className="template-name">{template.name}</span>
                             </button>
                           </td>
                           <td>HTML</td>
@@ -1747,8 +1778,8 @@ export function App() {
                               <button
                                 aria-label={`Editar ${template.name}`}
                                 className="icon-button"
-                                onClick={() => handleOpenDetails(template)}
-                                title="Editar"
+                                onClick={() => handleOpenDetails(template, true)}
+                                title="Editar dados"
                                 type="button"
                               >
                                 <FilePenLine size={16} />
@@ -2134,7 +2165,7 @@ export function App() {
                   <header className="details-page__header">
                     <div>
                       <span className="details-page__eyebrow">Template</span>
-                      <h2>{draft.name}</h2>
+                      <h2 className="template-name">{draft.name}</h2>
                       <p>Resumo geral do template antes de abrir a edicao.</p>
                     </div>
                   </header>
@@ -2142,25 +2173,110 @@ export function App() {
                   <div className="details-panel">
                     <div className="details-panel__header">
                       <h3>Detalhes</h3>
+                      <div className="details-page__actions">
+                        {detailsEditMode ? (
+                          <>
+                            <button className="secondary-button" onClick={() => setDetailsEditMode(false)} type="button">
+                              Cancelar
+                            </button>
+                            <button className="primary-button" onClick={handleSaveDetails} type="button">
+                              <Save size={16} />
+                              Salvar dados
+                            </button>
+                          </>
+                        ) : (
+                          <button className="secondary-button" onClick={() => setDetailsEditMode(true)} type="button">
+                            Editar dados
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <dl className="details-list">
-                      <div>
-                        <dt>Nome</dt>
-                        <dd>{draft.name}</dd>
+                    {detailsEditMode ? (
+                      <div className="details-edit-grid">
+                        <label className="field">
+                          <span>Nome</span>
+                          <input
+                            onChange={(event) =>
+                              setDraft((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      name: event.target.value,
+                                    }
+                                  : current,
+                              )
+                            }
+                            value={draft.name}
+                          />
+                        </label>
+
+                        <label className="field">
+                          <span>Assunto</span>
+                          <input
+                            onChange={(event) =>
+                              setDraft((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      subject: event.target.value,
+                                    }
+                                  : current,
+                              )
+                            }
+                            value={draft.subject}
+                          />
+                        </label>
+
+                        <label className="field">
+                          <span>Categoria</span>
+                          <input
+                            list="template-category-options"
+                            onChange={(event) =>
+                              setDraft((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      category: event.target.value,
+                                    }
+                                  : current,
+                              )
+                            }
+                            value={draft.category}
+                          />
+                          <datalist id="template-category-options">
+                            {availableCategories.map((category) => (
+                              <option key={category} value={category} />
+                            ))}
+                          </datalist>
+                        </label>
+
+                        <div className="field">
+                          <span>ID do template</span>
+                          <input readOnly value={draft.id} />
+                        </div>
                       </div>
-                      <div>
-                        <dt>Assunto</dt>
-                        <dd>{draft.subject}</dd>
-                      </div>
-                      <div>
-                        <dt>Categoria</dt>
-                        <dd>{draft.category}</dd>
-                      </div>
-                      <div>
-                        <dt>ID do template</dt>
-                        <dd>{draft.id}</dd>
-                      </div>
-                    </dl>
+                    ) : (
+                      <dl className="details-list">
+                        <div>
+                          <dt>Nome</dt>
+                          <dd>
+                            <span className="template-name">{draft.name}</span>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Assunto</dt>
+                          <dd>{draft.subject}</dd>
+                        </div>
+                        <div>
+                          <dt>Categoria</dt>
+                          <dd>{draft.category}</dd>
+                        </div>
+                        <div>
+                          <dt>ID do template</dt>
+                          <dd>{draft.id}</dd>
+                        </div>
+                      </dl>
+                    )}
                   </div>
                 </section>
 
@@ -2214,7 +2330,7 @@ export function App() {
                               <span>{dateFormatter.format(new Date(version.createdAt))}</span>
                             </div>
                             <div className="version-card__info">
-                              <span>{version.name}</span>
+                              <span className="template-name">{version.name}</span>
                               <span>{version.subject}</span>
                               <span>{version.category}</span>
                             </div>
@@ -2237,7 +2353,7 @@ export function App() {
 
           {view === 'editor' && draft && (
             <section className="page page--editor">
-              <div className="editor-workbench">
+              <div className={`editor-workbench editor-workbench--${previewDevice}`.trim()}>
                 <section className="editor-column">
                   <div className="editor-column__top">
                     <div className="editor-column__tabs">

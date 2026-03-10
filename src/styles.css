@@ -516,12 +516,24 @@ button {
 }
 
 .table-link {
+  display: block;
+  width: 100%;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--primary-strong);
   font-size: 1.05rem;
   font-weight: 700;
+  text-align: left;
+}
+
+.template-name {
+  display: block;
+  max-width: 100%;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .icon-actions {
@@ -695,6 +707,12 @@ button {
   grid-template-columns: 220px minmax(0, 1fr);
 }
 
+.details-edit-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 4px;
+}
+
 .details-page__actions,
 .preview-shell__actions {
   display: flex;
@@ -715,12 +733,16 @@ button {
 }
 
 .editor-workbench {
+  --workbench-height: clamp(700px, calc(100vh - 240px), 960px);
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(420px, 0.95fr);
+  grid-template-columns: minmax(0, 1fr) minmax(460px, 560px);
   gap: 20px;
-  align-items: stretch;
-  min-height: calc(100vh - 280px);
+  align-items: start;
   overflow: hidden;
+}
+
+.editor-workbench--tablet {
+  grid-template-columns: minmax(0, 0.95fr) minmax(560px, 760px);
 }
 
 .editor-column,
@@ -728,6 +750,7 @@ button {
   min-width: 0;
   position: relative;
   isolation: isolate;
+  height: var(--workbench-height);
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: var(--shadow);
@@ -820,7 +843,7 @@ button {
   height: 100%;
   padding: 14px 16px;
   border: 0;
-  resize: vertical;
+  resize: none;
   background: transparent;
   color: transparent;
   caret-color: #f4f7ff;
@@ -829,8 +852,11 @@ button {
   line-height: 1.72;
   position: relative;
   z-index: 2;
-  white-space: pre;
-  overflow-wrap: normal;
+  overflow-x: hidden;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .markup-editor {
@@ -875,6 +901,16 @@ button {
   z-index: 1;
 }
 
+.markup-editor__current-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  background: rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+  will-change: transform;
+}
+
 .markup-editor__highlight-inner {
   min-width: 100%;
   margin: 0;
@@ -883,7 +919,9 @@ button {
   font-family: 'IBM Plex Mono', Consolas, monospace;
   font-size: 0.92rem;
   line-height: 1.72;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   will-change: transform;
   pointer-events: none;
 }
@@ -1288,7 +1326,15 @@ button {
 }
 
 .gmail-preview--tablet {
+  width: min(100%, 820px);
   max-width: 820px;
+}
+
+.gmail-preview--tablet .gmail-mobile__statusbar,
+.gmail-preview--tablet .gmail-mobile__toolbar,
+.gmail-preview--tablet .gmail-mobile__subject {
+  padding-left: 24px;
+  padding-right: 24px;
 }
 
 .gmail-preview--tablet .gmail-mobile__mail {
@@ -1922,6 +1968,7 @@ button {
 .version-card__info {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .version-card__meta span,
@@ -2247,6 +2294,10 @@ button {
 
 @media (max-width: 1400px) {
   .editor-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-workbench--tablet {
     grid-template-columns: 1fr;
   }
 }

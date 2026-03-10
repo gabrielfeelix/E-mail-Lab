@@ -76,10 +76,36 @@ function PreviewCanvas({
     const html = doc.documentElement
     const body = doc.body
 
+    if (!body) {
+      return
+    }
+
+    let sentinel = body.querySelector('[data-preview-sentinel="true"]') as HTMLDivElement | null
+
+    if (!sentinel) {
+      sentinel = doc.createElement('div')
+      sentinel.dataset.previewSentinel = 'true'
+      sentinel.setAttribute('aria-hidden', 'true')
+      sentinel.style.cssText = [
+        'display:block',
+        'clear:both',
+        'width:1px',
+        'height:1px',
+        'margin:0',
+        'padding:0',
+        'border:0',
+        'opacity:0',
+        'pointer-events:none',
+      ].join(';')
+      body.append(sentinel)
+    }
+
     const measure = () => {
+      const scrollingElement = doc.scrollingElement
       const bodyRect = body?.getBoundingClientRect()
       const bodyTop = bodyRect?.top ?? 0
       const bodyLeft = bodyRect?.left ?? 0
+      const sentinelRect = sentinel?.getBoundingClientRect()
       const descendants = Array.from(body?.querySelectorAll('*') ?? [])
       const furthestRight = descendants.reduce((max, element) => {
         const rect = element.getBoundingClientRect()
@@ -91,6 +117,7 @@ function PreviewCanvas({
       }, Math.ceil(bodyRect?.height ?? 0))
       const nextWidth = Math.max(
         viewportWidth,
+        scrollingElement?.scrollWidth ?? 0,
         html?.scrollWidth ?? 0,
         body?.scrollWidth ?? 0,
         Math.ceil(bodyRect?.width ?? 0),
@@ -98,16 +125,18 @@ function PreviewCanvas({
       )
       const nextHeight = Math.max(
         viewportHeight,
+        scrollingElement?.scrollHeight ?? 0,
         html?.scrollHeight ?? 0,
         body?.scrollHeight ?? 0,
         html?.offsetHeight ?? 0,
         body?.offsetHeight ?? 0,
         Math.ceil(bodyRect?.height ?? 0),
         Math.ceil(furthestBottom),
+        Math.ceil((sentinelRect?.bottom ?? 0) - bodyTop),
       )
 
       setContentWidth(nextWidth)
-      setContentHeight(nextHeight + 8)
+      setContentHeight(nextHeight + 24)
     }
 
     const resizeObserver = new ResizeObserver(() => {
@@ -119,6 +148,7 @@ function PreviewCanvas({
 
     resizeObserver.observe(html)
     resizeObserver.observe(body)
+    resizeObserver.observe(sentinel)
     mutationObserver.observe(body, {
       attributes: true,
       characterData: true,

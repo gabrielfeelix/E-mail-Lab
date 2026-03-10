@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 
 type MarkupEditorProps = {
   onChange: (value: string) => void
@@ -100,6 +100,8 @@ export function MarkupEditor(props: MarkupEditorProps) {
   const { onChange, textareaRef, value } = props
   const highlightInnerRef = useRef<HTMLPreElement | null>(null)
   const gutterInnerRef = useRef<HTMLDivElement | null>(null)
+  const [activeLineHeight, setActiveLineHeight] = useState(24)
+  const [activeLineTop, setActiveLineTop] = useState(14)
   const highlightedMarkup = useMemo(() => highlightMarkup(value), [value])
   const lineNumbers = useMemo(() => {
     const count = Math.max(value.split('\n').length, 1)
@@ -114,6 +116,15 @@ export function MarkupEditor(props: MarkupEditorProps) {
     }
 
     const sync = () => {
+      const styles = window.getComputedStyle(textarea)
+      const paddingTop = Number.parseFloat(styles.paddingTop) || 0
+      const lineHeight = Number.parseFloat(styles.lineHeight) || 24
+      const selectionStart = textarea.selectionStart ?? 0
+      const nextLine = Math.max(value.slice(0, selectionStart).split('\n').length - 1, 0)
+
+      setActiveLineHeight(lineHeight)
+      setActiveLineTop(paddingTop + nextLine * lineHeight - textarea.scrollTop)
+
       if (highlightInnerRef.current) {
         highlightInnerRef.current.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`
       }
@@ -125,7 +136,20 @@ export function MarkupEditor(props: MarkupEditorProps) {
 
     sync()
     textarea.addEventListener('scroll', sync)
-    return () => textarea.removeEventListener('scroll', sync)
+    textarea.addEventListener('click', sync)
+    textarea.addEventListener('focus', sync)
+    textarea.addEventListener('input', sync)
+    textarea.addEventListener('keyup', sync)
+    textarea.addEventListener('select', sync)
+
+    return () => {
+      textarea.removeEventListener('scroll', sync)
+      textarea.removeEventListener('click', sync)
+      textarea.removeEventListener('focus', sync)
+      textarea.removeEventListener('input', sync)
+      textarea.removeEventListener('keyup', sync)
+      textarea.removeEventListener('select', sync)
+    }
   }, [textareaRef, value])
 
   return (
@@ -142,6 +166,13 @@ export function MarkupEditor(props: MarkupEditorProps) {
 
       <div className="markup-editor__code">
         <div aria-hidden="true" className="markup-editor__highlight">
+          <div
+            className="markup-editor__current-line"
+            style={{
+              height: activeLineHeight,
+              transform: `translateY(${activeLineTop}px)`,
+            }}
+          />
           <pre
             className="markup-editor__highlight-inner"
             dangerouslySetInnerHTML={{ __html: `${highlightedMarkup || ' '}\n` }}
