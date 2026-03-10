@@ -894,8 +894,8 @@ button {
   overflow-x: hidden;
   overflow-y: auto;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .markup-editor {
@@ -961,8 +961,8 @@ button {
   font-size: 0.92rem;
   line-height: 1.72;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: normal;
+  word-break: normal;
   visibility: hidden;
   pointer-events: none;
   z-index: 0;
