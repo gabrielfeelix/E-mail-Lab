@@ -2467,8 +2467,7 @@ export function App() {
                     </div>
 
                     <MarkupEditor
-                      onChange={(value, selection) => {
-                        pendingEditorSelectionRef.current = selection
+                      onChange={(value) =>
                         setDraft((current) =>
                           current
                             ? {
@@ -2477,7 +2476,7 @@ export function App() {
                               }
                             : current,
                         )
-                      }}
+                      }
                       textareaRef={editorTextareaRef}
                       value={draft.markup}
                     />
