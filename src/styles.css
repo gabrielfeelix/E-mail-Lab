@@ -918,6 +918,19 @@ button {
   -webkit-text-fill-color: transparent;
 }
 
+.editor-textarea--highlighted::selection {
+  background: rgba(37, 99, 235, 0.55);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+}
+
+.editor-textarea--highlighted::-moz-selection {
+  background: rgba(37, 99, 235, 0.55);
+  color: transparent;
+  text-shadow: none;
+}
+
 .markup-editor {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
