@@ -614,8 +614,7 @@ button {
 }
 
 .field input:focus,
-.field select:focus,
-.editor-textarea:focus {
+.field select:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(217, 30, 24, 0.1);
@@ -889,147 +888,25 @@ button {
   font-size: 0.84rem;
 }
 
-.editor-textarea {
-  display: block;
-  width: 100%;
-  min-height: 0;
-  height: 100%;
-  padding: 14px 16px;
-  border: 0;
-  resize: none;
-  background: transparent;
-  color: #f4f7ff;
-  caret-color: #f4f7ff;
-  font-family: 'IBM Plex Mono', Consolas, monospace;
-  font-size: 0.92rem;
-  line-height: 1.72;
-  position: relative;
-  z-index: 2;
-  overflow-x: hidden;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  overflow-wrap: normal;
-  word-break: normal;
-  tab-size: 2;
-}
-
-.editor-textarea--highlighted {
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-}
-
-.editor-textarea--highlighted::selection {
-  background: rgba(37, 99, 235, 0.55);
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  text-shadow: none;
-}
-
-.editor-textarea--highlighted::-moz-selection {
-  background: rgba(37, 99, 235, 0.55);
-  color: transparent;
-  text-shadow: none;
-}
-
 .markup-editor {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
   min-height: 0;
   height: 100%;
 }
 
-.markup-editor__gutter,
-.markup-editor__code {
-  position: relative;
+.markup-editor--codemirror {
+  overflow: hidden;
+}
+
+.markup-editor--codemirror .cm-editor {
+  height: 100%;
   min-height: 0;
-  overflow: hidden;
 }
 
-.markup-editor__gutter {
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+.markup-editor--codemirror .cm-scroller {
+  min-height: 0;
 }
 
-.markup-editor__gutter-inner {
-  padding: 14px 10px 14px 0;
-  will-change: transform;
-}
-
-.markup-editor__line-number {
-  display: block;
-  height: calc(0.92rem * 1.72);
-  color: #6d83a4;
-  font-family: 'IBM Plex Mono', Consolas, monospace;
-  font-size: 0.82rem;
-  line-height: 1.72;
-  text-align: right;
-  user-select: none;
-}
-
-.markup-editor__highlight {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.markup-editor__highlight-inner {
-  min-width: 100%;
-  margin: 0;
-  padding: 14px 16px;
-  color: #f4f7ff;
-  font-family: 'IBM Plex Mono', Consolas, monospace;
-  font-size: 0.92rem;
-  line-height: 1.72;
-  white-space: pre-wrap;
-  overflow-wrap: normal;
-  word-break: normal;
-  tab-size: 2;
-  pointer-events: none;
-  will-change: transform;
-}
-
-.markup-editor__highlight-inner .editor-token--tag,
-.markup-editor__highlight-inner .editor-token--tag-name,
-.markup-editor__highlight-inner .editor-token--attr,
-.markup-editor__highlight-inner .editor-token--string,
-.markup-editor__highlight-inner .editor-token--value,
-.markup-editor__highlight-inner .editor-token--comment,
-.markup-editor__highlight-inner .editor-token--selector,
-.markup-editor__highlight-inner .editor-token--property,
-.markup-editor__highlight-inner .editor-token--variable {
-  display: contents;
-  font-weight: inherit;
-}
-
-.editor-token--tag,
-.editor-token--tag-name {
-  color: #ff6b6b;
-}
-
-.editor-token--attr {
-  color: #31d0aa;
-}
-
-.editor-token--string,
-.editor-token--value {
-  color: #ffb454;
-}
-
-.editor-token--comment {
-  color: #6e7f98;
-}
-
-.editor-token--selector {
-  color: #7db3ff;
-}
-
-.editor-token--property {
-  color: #7dd3fc;
-}
-
-.editor-token--variable {
+.markup-editor--codemirror .cm-template-variable {
   color: #d58cff;
 }
 

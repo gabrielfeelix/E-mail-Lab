@@ -1,5 +1,4 @@
 ﻿import { useDeferredValue, useEffect, useMemo, useRef, useState, startTransition } from 'react'
-import { useLayoutEffect } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   Braces,
@@ -32,7 +31,7 @@ import { AuthScreen } from './components/AuthScreen'
 import { CategoryField } from './components/CategoryField'
 import { ColorTokenField } from './components/ColorTokenField'
 import { GmailPreview } from './components/GmailPreview'
-import { MarkupEditor } from './components/MarkupEditor'
+import { MarkupEditor, type MarkupEditorHandle } from './components/MarkupEditor'
 import { companies, companyThemeStyle, type CompanyId } from './data/companies'
 import { templateVariableGroups, type TemplateVariableGroup } from './data/template-variables'
 import {
@@ -81,13 +80,6 @@ type DeviceConfig = {
 type DuplicateState = {
   name: string
   template: TemplateRecord
-}
-
-type EditorSelectionSnapshot = {
-  end: number
-  scrollLeft: number
-  scrollTop: number
-  start: number
 }
 
 type TemplateFormState = {
@@ -367,8 +359,7 @@ export function App() {
   const [sendTestError, setSendTestError] = useState<string | null>(null)
   const [isSendingTest, setIsSendingTest] = useState(false)
   const [inlinedDocument, setInlinedDocument] = useState('')
-  const editorTextareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const pendingEditorSelectionRef = useRef<EditorSelectionSnapshot | null>(null)
+  const markupEditorRef = useRef<MarkupEditorHandle | null>(null)
 
   const accessibleCompanies = useMemo(() => {
     if (profile?.isAdmin) {
@@ -753,21 +744,6 @@ export function App() {
       cancelled = true
     }
   }, [deferredPreviewMarkup, previewModalOpen, previewRecord, view])
-
-  useLayoutEffect(() => {
-    const textarea = editorTextareaRef.current
-    const pendingSelection = pendingEditorSelectionRef.current
-
-    if (!textarea || !pendingSelection) {
-      return
-    }
-
-    pendingEditorSelectionRef.current = null
-    textarea.focus({ preventScroll: true })
-    textarea.setSelectionRange(pendingSelection.start, pendingSelection.end)
-    textarea.scrollTop = pendingSelection.scrollTop
-    textarea.scrollLeft = pendingSelection.scrollLeft
-  }, [draft?.markup])
 
   useEffect(() => {
     if (!notice) {
@@ -1564,20 +1540,7 @@ export function App() {
       return
     }
 
-    const textarea = editorTextareaRef.current
-    const selectionStart = textarea?.selectionStart ?? draft.markup.length
-    const selectionEnd = textarea?.selectionEnd ?? draft.markup.length
-    const nextMarkup =
-      draft.markup.slice(0, selectionStart) + token + draft.markup.slice(selectionEnd)
-    const nextCursor = selectionStart + token.length
-
-    pendingEditorSelectionRef.current = {
-      end: nextCursor,
-      scrollLeft: textarea?.scrollLeft ?? 0,
-      scrollTop: textarea?.scrollTop ?? 0,
-      start: nextCursor,
-    }
-    setDraft((current) => (current ? { ...current, markup: nextMarkup } : current))
+    markupEditorRef.current?.replaceSelection(token)
     setVariableModalOpen(false)
   }
 
@@ -2548,6 +2511,7 @@ export function App() {
                     </div>
 
                     <MarkupEditor
+                      editorRef={markupEditorRef}
                       onChange={(value) =>
                         setDraft((current) =>
                           current
@@ -2558,7 +2522,6 @@ export function App() {
                             : current,
                         )
                       }
-                      textareaRef={editorTextareaRef}
                       value={draft.markup}
                     />
                   </div>

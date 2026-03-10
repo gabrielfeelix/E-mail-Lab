@@ -1,195 +1,221 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
+import { html } from '@codemirror/lang-html'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { EditorState } from '@codemirror/state'
+import {
+  Decoration,
+  EditorView,
+  MatchDecorator,
+  ViewPlugin,
+  drawSelection,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  keymap,
+  lineNumbers,
+} from '@codemirror/view'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { indentWithTab } from '@codemirror/commands'
+import { searchKeymap } from '@codemirror/search'
+import { defaultHighlightStyle } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 
-type EditorSelectionSnapshot = {
-  end: number
-  scrollLeft: number
-  scrollTop: number
-  start: number
+export type MarkupEditorHandle = {
+  focus: () => void
+  replaceSelection: (text: string) => void
 }
 
 type MarkupEditorProps = {
-  onChange: (value: string, selection: EditorSelectionSnapshot) => void
-  textareaRef: RefObject<HTMLTextAreaElement | null>
+  editorRef: RefObject<MarkupEditorHandle | null>
+  onChange: (value: string) => void
   value: string
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
+const variableDecorator = new MatchDecorator({
+  decoration: Decoration.mark({ class: 'cm-template-variable' }),
+  regexp: /\{\{[\s\S]*?\}\}/g,
+})
 
-function highlightCssFragment(value: string) {
-  let html = escapeHtml(value)
+const variablePlugin = ViewPlugin.fromClass(
+  class {
+    decorations
 
-  html = html.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="editor-token editor-token--comment">$1</span>')
-  html = html.replace(/([.#]?[A-Za-z_][\w:-]*)(\s*\{)/g, '<span class="editor-token editor-token--selector">$1</span>$2')
-  html = html.replace(/([a-z-]+)(\s*:)/gi, '<span class="editor-token editor-token--property">$1</span>$2')
-  html = html.replace(
-    /(#(?:[0-9a-fA-F]{3,8})\b|(?:\d+|\d*\.\d+)(?:px|em|rem|vh|vw|%|fr)?\b|rgba?\([^)]+\)|hsla?\([^)]+\)|\b[a-z-]+\b(?=\s*[;,)]))/g,
-    '<span class="editor-token editor-token--value">$1</span>',
-  )
+    constructor(view: EditorView) {
+      this.decorations = variableDecorator.createDeco(view)
+    }
 
-  return html
-}
+    update(update: Parameters<(typeof variableDecorator)['updateDeco']>[0]) {
+      this.decorations = variableDecorator.updateDeco(update, this.decorations)
+    }
+  },
+  {
+    decorations: (plugin) => plugin.decorations,
+  },
+)
 
-function highlightAttributeChunk(value: string) {
-  return escapeHtml(value).replace(
-    /([:@A-Za-z0-9._-]+)(\s*=\s*)(&quot;.*?&quot;|&#39;.*?&#39;|[^\s"'=<>`]+)/g,
-    '<span class="editor-token editor-token--attr">$1</span>$2<span class="editor-token editor-token--string">$3</span>',
-  )
-}
+const editorTheme = EditorView.theme(
+  {
+    '&': {
+      backgroundColor: 'transparent',
+      color: '#f4f7ff',
+      height: '100%',
+    },
+    '.cm-scroller': {
+      fontFamily: "'IBM Plex Mono', Consolas, monospace",
+      lineHeight: '1.72',
+      overflow: 'auto',
+    },
+    '.cm-content, .cm-gutterElement': {
+      fontFamily: "'IBM Plex Mono', Consolas, monospace",
+      fontSize: '0.92rem',
+      lineHeight: '1.72',
+    },
+    '.cm-content': {
+      caretColor: '#f4f7ff',
+      padding: '14px 16px',
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'normal',
+    },
+    '.cm-focused': {
+      outline: 'none',
+    },
+    '.cm-line': {
+      padding: 0,
+    },
+    '.cm-selectionBackground, ::selection': {
+      backgroundColor: 'rgba(37, 99, 235, 0.55) !important',
+    },
+    '.cm-gutters': {
+      backgroundColor: 'rgba(255, 255, 255, 0.02)',
+      borderRight: '1px solid rgba(255, 255, 255, 0.08)',
+      color: '#6d83a4',
+    },
+    '.cm-lineNumbers .cm-gutterElement': {
+      minWidth: '44px',
+      padding: '0 10px 0 0',
+      textAlign: 'right',
+    },
+    '.cm-activeLine': {
+      backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    },
+    '.cm-template-variable': {
+      color: '#d58cff',
+    },
+  },
+  { dark: true },
+)
 
-function highlightTag(value: string) {
-  const match = value.match(/^<(\/?)([A-Za-z][\w:-]*)([\s\S]*?)(\/?)>$/)
+const editorHighlightStyle = HighlightStyle.define([
+  { color: '#6e7f98', tag: tags.comment },
+  { color: '#ff6b6b', tag: [tags.angleBracket, tags.tagName] },
+  { color: '#31d0aa', tag: [tags.attributeName, tags.labelName] },
+  { color: '#ffb454', tag: [tags.attributeValue, tags.string, tags.number, tags.bool] },
+  { color: '#7db3ff', tag: [tags.className, tags.typeName] },
+  { color: '#7dd3fc', tag: [tags.keyword, tags.propertyName] },
+])
 
-  if (!match) {
-    return `<span class="editor-token editor-token--tag">${escapeHtml(value)}</span>`
-  }
-
-  const closeSlash = match[1] ?? ''
-  const tagName = match[2] ?? ''
-  const attributes = match[3] ?? ''
-  const selfClosingSlash = match[4] ?? ''
-  const leading = `&lt;${closeSlash}`
-  const trailing = `${selfClosingSlash}&gt;`
-
-  return [
-    `<span class="editor-token editor-token--tag">${leading}</span>`,
-    `<span class="editor-token editor-token--tag-name">${escapeHtml(tagName)}</span>`,
-    highlightAttributeChunk(attributes),
-    `<span class="editor-token editor-token--tag">${trailing}</span>`,
-  ].join('')
-}
-
-function highlightMarkup(value: string) {
-  const parts = value.split(/(\{\{[\s\S]*?\}\}|<!--[\s\S]*?-->|<\/?[^>]+>)/g)
-  let inStyle = false
-
-  return parts
-    .map((part) => {
-      if (!part) {
-        return ''
-      }
-
-      if (part.startsWith('{{') && part.endsWith('}}')) {
-        return `<span class="editor-token editor-token--variable">${escapeHtml(part)}</span>`
-      }
-
-      if (part.startsWith('<!--') && part.endsWith('-->')) {
-        return `<span class="editor-token editor-token--comment">${escapeHtml(part)}</span>`
-      }
-
-      if (part.startsWith('<') && part.endsWith('>')) {
-        const highlighted = highlightTag(part)
-        const normalized = part.toLowerCase()
-
-        if (normalized.startsWith('<style')) {
-          inStyle = true
-        }
-
-        if (normalized.startsWith('</style')) {
-          inStyle = false
-        }
-
-        return highlighted
-      }
-
-      return inStyle ? highlightCssFragment(part) : escapeHtml(part)
-    })
-    .join('')
-}
+const editorExtensions = [
+  lineNumbers(),
+  highlightActiveLineGutter(),
+  drawSelection(),
+  highlightActiveLine(),
+  history(),
+  keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+  EditorView.lineWrapping,
+  EditorView.contentAttributes.of({
+    autocapitalize: 'off',
+    autocomplete: 'off',
+    autocorrect: 'off',
+    spellcheck: 'false',
+  }),
+  html(),
+  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  syntaxHighlighting(editorHighlightStyle),
+  variablePlugin,
+  editorTheme,
+]
 
 export function MarkupEditor(props: MarkupEditorProps) {
-  const { onChange, textareaRef, value } = props
-  const gutterInnerRef = useRef<HTMLDivElement | null>(null)
-  const highlightInnerRef = useRef<HTMLPreElement | null>(null)
-  const [lineCount, setLineCount] = useState(() => Math.max(value.split('\n').length, 1))
-  const highlightedMarkup = useMemo(() => highlightMarkup(value), [value])
-  const lineNumbers = useMemo(() => Array.from({ length: lineCount }, (_, index) => index + 1), [lineCount])
+  const { editorRef, onChange, value } = props
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  const viewRef = useRef<EditorView | null>(null)
+  const onChangeRef = useRef(onChange)
 
   useEffect(() => {
-    const textarea = textareaRef.current
+    onChangeRef.current = onChange
+  }, [onChange])
 
-    if (!textarea) {
+  useEffect(() => {
+    const host = hostRef.current
+
+    if (!host) {
       return
     }
 
-    const updateLineCount = () => {
-      const styles = window.getComputedStyle(textarea)
-      const lineHeight = Number.parseFloat(styles.lineHeight) || 24
-      const paddingTop = Number.parseFloat(styles.paddingTop) || 0
-      const paddingBottom = Number.parseFloat(styles.paddingBottom) || 0
-      const logicalLineCount = Math.max(value.split('\n').length, 1)
-      const wrappedLineCount = Math.max(1, Math.ceil((textarea.scrollHeight - paddingTop - paddingBottom) / lineHeight))
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: value,
+        extensions: [
+          ...editorExtensions,
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              onChangeRef.current(update.state.doc.toString())
+            }
+          }),
+        ],
+      }),
+    })
 
-      setLineCount(Math.max(logicalLineCount, wrappedLineCount))
+    viewRef.current = view
+    editorRef.current = {
+      focus: () => view.focus(),
+      replaceSelection: (text: string) => {
+        const selection = view.state.selection.main
+        const nextCursor = selection.from + text.length
+
+        view.dispatch({
+          changes: { from: selection.from, insert: text, to: selection.to },
+          selection: { anchor: nextCursor },
+          scrollIntoView: true,
+        })
+        view.focus()
+      },
     }
-
-    const sync = () => {
-      if (gutterInnerRef.current) {
-        gutterInnerRef.current.style.transform = `translateY(${-textarea.scrollTop}px)`
-      }
-
-      if (highlightInnerRef.current) {
-        highlightInnerRef.current.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`
-      }
-
-      updateLineCount()
-    }
-
-    sync()
-    textarea.addEventListener('scroll', sync)
-    const resizeObserver = new ResizeObserver(sync)
-    resizeObserver.observe(textarea)
 
     return () => {
-      textarea.removeEventListener('scroll', sync)
-      resizeObserver.disconnect()
+      if (editorRef.current) {
+        editorRef.current = null
+      }
+
+      view.destroy()
+      viewRef.current = null
     }
-  }, [textareaRef, value])
+  }, [editorRef, value])
 
-  return (
-    <div className="markup-editor">
-      <div aria-hidden="true" className="markup-editor__gutter">
-        <div className="markup-editor__gutter-inner" ref={gutterInnerRef}>
-          {lineNumbers.map((lineNumber) => (
-            <span className="markup-editor__line-number" key={lineNumber}>
-              {lineNumber}
-            </span>
-          ))}
-        </div>
-      </div>
+  useEffect(() => {
+    const view = viewRef.current
 
-      <div className="markup-editor__code">
-        <div aria-hidden="true" className="markup-editor__highlight">
-          <pre
-            className="markup-editor__highlight-inner"
-            dangerouslySetInnerHTML={{ __html: `${highlightedMarkup || ' '}\n` }}
-            ref={highlightInnerRef}
-          />
-        </div>
+    if (!view) {
+      return
+    }
 
-        <textarea
-          aria-label="Editor de markup do email"
-          className="editor-textarea editor-textarea--highlighted"
-          onChange={(event) =>
-            onChange(event.target.value, {
-              end: event.target.selectionEnd ?? event.target.value.length,
-              scrollLeft: event.target.scrollLeft,
-              scrollTop: event.target.scrollTop,
-              start: event.target.selectionStart ?? event.target.value.length,
-            })
-          }
-          ref={textareaRef}
-          spellCheck={false}
-          wrap="soft"
-          value={value}
-        />
-      </div>
-    </div>
-  )
+    const currentValue = view.state.doc.toString()
+
+    if (currentValue === value) {
+      return
+    }
+
+    const currentSelection = view.state.selection.main
+    const nextCursor = Math.min(currentSelection.head, value.length)
+
+    view.dispatch({
+      changes: { from: 0, insert: value, to: currentValue.length },
+      selection: { anchor: nextCursor },
+    })
+  }, [value])
+
+  return <div className="markup-editor markup-editor--codemirror" ref={hostRef} />
 }
