@@ -193,7 +193,7 @@ export function MarkupEditor(props: MarkupEditorProps) {
       view.destroy()
       viewRef.current = null
     }
-  }, [editorRef, value])
+  }, [editorRef])
 
   useEffect(() => {
     const view = viewRef.current
