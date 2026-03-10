@@ -1,6 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import juice from 'juice'
 import nodemailer from 'nodemailer'
+import {
+  buildRecipientHeaders,
+  htmlToPlainText,
+  resolveDeliverabilityConfig,
+} from './_email-deliverability.js'
 
 const DEFAULT_SUPABASE_URL = 'https://mejsihwvvpcmiktjnnpx.supabase.co'
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_IuSuAC__d87fbwdPtybqsw_o6YYckvx'
@@ -158,6 +163,26 @@ export default async function handler(req, res) {
     return
   }
 
+  let deliverabilityConfig
+
+  try {
+    deliverabilityConfig = resolveDeliverabilityConfig(companyResult.data.id, companyResult.data.name)
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      message: error instanceof Error ? error.message : 'Configuracao de entregabilidade invalida.',
+    })
+    return
+  }
+
+  if (!deliverabilityConfig.from) {
+    res.status(500).json({
+      ok: false,
+      message: 'Configure EMAIL_LAB_TEST_FROM ou um remetente por empresa antes de enviar testes.',
+    })
+    return
+  }
+
   const html = juice(buildEmailDocument(markup), {
     applyStyleTags: true,
     inlinePseudoElements: false,
@@ -166,23 +191,45 @@ export default async function handler(req, res) {
     preserveMediaQueries: true,
     removeStyleTags: false,
   })
+  const text = htmlToPlainText(html)
 
   const transporter = nodemailer.createTransport({
     auth: {
       pass: smtpPass,
       user: smtpUser,
     },
+    dkim: deliverabilityConfig.dkim,
     host: smtpHost,
     port: smtpPort,
     secure: smtpSecure,
   })
 
-  await transporter.sendMail({
-    from: smtpFrom,
-    html,
-    subject: `[TESTE] ${subject || `Template ${companyResult.data.name}`}`,
-    to: toEmails,
-  })
+  const baseSubject = `[TESTE] ${subject || `Template ${companyResult.data.name}`}`
+
+  for (const recipient of toEmails) {
+    await transporter.sendMail({
+      envelope: deliverabilityConfig.bounceAddress
+        ? {
+            from: deliverabilityConfig.bounceAddress,
+            to: recipient,
+          }
+        : undefined,
+      from: deliverabilityConfig.from || smtpFrom,
+      headers: buildRecipientHeaders(
+        deliverabilityConfig,
+        {
+          id: companyResult.data.id,
+          name: companyResult.data.name,
+        },
+        recipient,
+      ),
+      html,
+      replyTo: deliverabilityConfig.replyTo || undefined,
+      subject: baseSubject,
+      text,
+      to: recipient,
+    })
+  }
 
   res.status(200).json({ ok: true, message: 'Email de teste enviado.' })
 }
