@@ -776,6 +776,13 @@ button {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.editor-column__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .editor-column__intro {
   margin: 0;
   max-width: 360px;
@@ -783,24 +790,27 @@ button {
   font-size: 0.9rem;
 }
 
-.editor-column__tabs {
+.editor-column__label {
   display: inline-flex;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.editor-column__tabs button {
-  min-height: 34px;
-  background: transparent;
-  color: #9fb3d1;
-}
-
-.editor-column__tabs button.is-active {
+  align-items: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
   background: #ffffff;
   color: #102033;
-  border-color: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+}
+
+.editor-column__ai-button {
+  min-height: 42px;
+}
+
+.editor-column__surface-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .editor-column__surface {
@@ -829,6 +839,35 @@ button {
   color: #102033;
   font-size: 0.8rem;
   font-weight: 700;
+}
+
+.editor-inline-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #c8d8f1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.editor-inline-action:hover,
+.editor-inline-action:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f4f7ff;
+  outline: none;
+  transform: translateY(-1px);
 }
 
 .editor-stats {
@@ -899,6 +938,7 @@ button {
   inset: 0;
   overflow: hidden;
   z-index: 1;
+  pointer-events: none;
 }
 
 .markup-editor__current-line {
@@ -924,6 +964,27 @@ button {
   word-break: break-word;
   will-change: transform;
   pointer-events: none;
+}
+
+.markup-editor__measure {
+  position: absolute;
+  inset: 0;
+  padding: 14px 16px;
+  color: transparent;
+  font-family: 'IBM Plex Mono', Consolas, monospace;
+  font-size: 0.92rem;
+  line-height: 1.72;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.markup-editor__measure-caret {
+  display: inline-block;
+  width: 0;
 }
 
 .editor-token--tag,
@@ -2394,6 +2455,12 @@ button {
   .modal-card__actions,
   .editor-column__top,
   .preview-column__top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .editor-column__header,
+  .editor-column__surface-top {
     flex-direction: column;
     align-items: stretch;
   }

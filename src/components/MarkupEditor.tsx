@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 
+type EditorSelectionSnapshot = {
+  end: number
+  scrollLeft: number
+  scrollTop: number
+  start: number
+}
+
 type MarkupEditorProps = {
-  onChange: (value: string) => void
+  onChange: (value: string, selection: EditorSelectionSnapshot) => void
   textareaRef: RefObject<HTMLTextAreaElement | null>
   value: string
 }
@@ -100,6 +107,8 @@ export function MarkupEditor(props: MarkupEditorProps) {
   const { onChange, textareaRef, value } = props
   const highlightInnerRef = useRef<HTMLPreElement | null>(null)
   const gutterInnerRef = useRef<HTMLDivElement | null>(null)
+  const mirrorBeforeRef = useRef<HTMLSpanElement | null>(null)
+  const mirrorCaretRef = useRef<HTMLSpanElement | null>(null)
   const [activeLineHeight, setActiveLineHeight] = useState(24)
   const [activeLineTop, setActiveLineTop] = useState(14)
   const highlightedMarkup = useMemo(() => highlightMarkup(value), [value])
@@ -117,13 +126,21 @@ export function MarkupEditor(props: MarkupEditorProps) {
 
     const sync = () => {
       const styles = window.getComputedStyle(textarea)
-      const paddingTop = Number.parseFloat(styles.paddingTop) || 0
       const lineHeight = Number.parseFloat(styles.lineHeight) || 24
       const selectionStart = textarea.selectionStart ?? 0
-      const nextLine = Math.max(value.slice(0, selectionStart).split('\n').length - 1, 0)
+
+      if (mirrorBeforeRef.current) {
+        mirrorBeforeRef.current.textContent = value.slice(0, selectionStart)
+      }
+
+      if (mirrorCaretRef.current) {
+        mirrorCaretRef.current.textContent = '\u200b'
+      }
+
+      const caretTop = mirrorCaretRef.current?.offsetTop ?? 14
 
       setActiveLineHeight(lineHeight)
-      setActiveLineTop(paddingTop + nextLine * lineHeight - textarea.scrollTop)
+      setActiveLineTop(caretTop - textarea.scrollTop)
 
       if (highlightInnerRef.current) {
         highlightInnerRef.current.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`
@@ -180,12 +197,25 @@ export function MarkupEditor(props: MarkupEditorProps) {
           />
         </div>
 
+        <div aria-hidden="true" className="markup-editor__measure">
+          <span ref={mirrorBeforeRef} />
+          <span className="markup-editor__measure-caret" ref={mirrorCaretRef} />
+        </div>
+
         <textarea
           aria-label="Editor de markup do email"
           className="editor-textarea"
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) =>
+            onChange(event.target.value, {
+              end: event.target.selectionEnd ?? event.target.value.length,
+              scrollLeft: event.target.scrollLeft,
+              scrollTop: event.target.scrollTop,
+              start: event.target.selectionStart ?? event.target.value.length,
+            })
+          }
           ref={textareaRef}
           spellCheck={false}
+          wrap="soft"
           value={value}
         />
       </div>

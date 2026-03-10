@@ -2440,15 +2440,11 @@ export function App() {
               <div className={`editor-workbench editor-workbench--${previewDevice}`.trim()}>
                 <section className="editor-column">
                   <div className="editor-column__top">
-                    <div className="editor-column__tabs">
-                      <button className="is-active" type="button">
+                    <div className="editor-column__header">
+                      <span className="editor-column__label">
                         Code Editor
-                      </button>
-                      <button onClick={handleOpenVariableModal} type="button">
-                        <Braces size={14} />
-                        Adicionar variavel
-                      </button>
-                      <button onClick={handleOpenAiModal} type="button">
+                      </span>
+                      <button className="editor-column__ai-button" onClick={handleOpenAiModal} type="button">
                         <Sparkles size={14} />
                         Criar com IA
                       </button>
@@ -2458,14 +2454,21 @@ export function App() {
 
                   <div className="editor-column__surface">
                     <div className="editor-column__surface-top">
-                      <span className="editor-badge">HTML</span>
+                      <div className="editor-column__surface-main">
+                        <span className="editor-badge">HTML</span>
+                        <button className="editor-inline-action" onClick={handleOpenVariableModal} type="button">
+                          <Braces size={13} />
+                          Adicionar variavel
+                        </button>
+                      </div>
                       <span className="editor-stats">
                         {markupStats.lines} lines | {markupStats.hasMediaQuery ? 'media queries' : 'sem media queries'}
                       </span>
                     </div>
 
                     <MarkupEditor
-                      onChange={(value) =>
+                      onChange={(value, selection) => {
+                        pendingEditorSelectionRef.current = selection
                         setDraft((current) =>
                           current
                             ? {
@@ -2474,7 +2477,7 @@ export function App() {
                               }
                             : current,
                         )
-                      }
+                      }}
                       textareaRef={editorTextareaRef}
                       value={draft.markup}
                     />
