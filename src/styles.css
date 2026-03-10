@@ -933,46 +933,6 @@ button {
   user-select: none;
 }
 
-.markup-editor__highlight {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.markup-editor__current-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  background: rgba(255, 255, 255, 0.1);
-  pointer-events: none;
-  will-change: transform;
-  z-index: 1;
-}
-
-.markup-editor__measure {
-  position: absolute;
-  inset: 0;
-  padding: 14px 16px;
-  color: transparent;
-  font-family: 'IBM Plex Mono', Consolas, monospace;
-  font-size: 0.92rem;
-  line-height: 1.72;
-  white-space: pre-wrap;
-  overflow-wrap: normal;
-  word-break: normal;
-  visibility: hidden;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.markup-editor__measure-caret {
-  display: inline-block;
-  width: 0;
-}
-
 .editor-token--tag,
 .editor-token--tag-name {
   color: #ff6b6b;
