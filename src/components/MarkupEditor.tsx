@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 
 type EditorSelectionSnapshot = {
   end: number
@@ -107,17 +107,26 @@ export function MarkupEditor(props: MarkupEditorProps) {
   const { onChange, textareaRef, value } = props
   const gutterInnerRef = useRef<HTMLDivElement | null>(null)
   const highlightInnerRef = useRef<HTMLPreElement | null>(null)
+  const [lineCount, setLineCount] = useState(() => Math.max(value.split('\n').length, 1))
   const highlightedMarkup = useMemo(() => highlightMarkup(value), [value])
-  const lineNumbers = useMemo(() => {
-    const count = Math.max(value.split('\n').length, 1)
-    return Array.from({ length: count }, (_, index) => index + 1)
-  }, [value])
+  const lineNumbers = useMemo(() => Array.from({ length: lineCount }, (_, index) => index + 1), [lineCount])
 
   useEffect(() => {
     const textarea = textareaRef.current
 
     if (!textarea) {
       return
+    }
+
+    const updateLineCount = () => {
+      const styles = window.getComputedStyle(textarea)
+      const lineHeight = Number.parseFloat(styles.lineHeight) || 24
+      const paddingTop = Number.parseFloat(styles.paddingTop) || 0
+      const paddingBottom = Number.parseFloat(styles.paddingBottom) || 0
+      const logicalLineCount = Math.max(value.split('\n').length, 1)
+      const wrappedLineCount = Math.max(1, Math.ceil((textarea.scrollHeight - paddingTop - paddingBottom) / lineHeight))
+
+      setLineCount(Math.max(logicalLineCount, wrappedLineCount))
     }
 
     const sync = () => {
@@ -128,15 +137,20 @@ export function MarkupEditor(props: MarkupEditorProps) {
       if (highlightInnerRef.current) {
         highlightInnerRef.current.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`
       }
+
+      updateLineCount()
     }
 
     sync()
     textarea.addEventListener('scroll', sync)
+    const resizeObserver = new ResizeObserver(sync)
+    resizeObserver.observe(textarea)
 
     return () => {
       textarea.removeEventListener('scroll', sync)
+      resizeObserver.disconnect()
     }
-  }, [textareaRef])
+  }, [textareaRef, value])
 
   return (
     <div className="markup-editor">

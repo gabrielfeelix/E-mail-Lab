@@ -804,6 +804,20 @@ button {
 
 .editor-column__ai-button {
   min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #c8d8f1;
+  font-weight: 600;
+}
+
+.editor-column__ai-button:hover,
+.editor-column__ai-button:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f4f7ff;
+  outline: none;
 }
 
 .editor-column__surface-main {
