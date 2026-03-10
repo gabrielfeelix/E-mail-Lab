@@ -1971,6 +1971,13 @@ button {
   min-width: 0;
 }
 
+.version-card__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: end;
+}
+
 .version-card__meta span,
 .version-card__info span {
   color: var(--muted);

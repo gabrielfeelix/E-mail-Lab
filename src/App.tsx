@@ -1,4 +1,5 @@
 ﻿import { useDeferredValue, useEffect, useMemo, useRef, useState, startTransition } from 'react'
+import { useLayoutEffect } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   Braces,
@@ -80,6 +81,13 @@ type DeviceConfig = {
 type DuplicateState = {
   name: string
   template: TemplateRecord
+}
+
+type EditorSelectionSnapshot = {
+  end: number
+  scrollLeft: number
+  scrollTop: number
+  start: number
 }
 
 type TemplateFormState = {
@@ -324,6 +332,7 @@ export function App() {
   const [companyPickerOpen, setCompanyPickerOpen] = useState(false)
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile')
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [previewTemplate, setPreviewTemplate] = useState<TemplateRecord | null>(null)
   const [variableModalOpen, setVariableModalOpen] = useState(false)
   const [variableSearch, setVariableSearch] = useState('')
   const [activeVariableGroupId, setActiveVariableGroupId] = useState('')
@@ -359,6 +368,7 @@ export function App() {
   const [isSendingTest, setIsSendingTest] = useState(false)
   const [inlinedDocument, setInlinedDocument] = useState('')
   const editorTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const pendingEditorSelectionRef = useRef<EditorSelectionSnapshot | null>(null)
 
   const accessibleCompanies = useMemo(() => {
     if (profile?.isAdmin) {
@@ -502,6 +512,8 @@ export function App() {
   }, [activeVariableGroupId, filteredVariableGroups])
 
   const deferredMarkup = useDeferredValue(draft?.markup ?? '')
+  const previewRecord = previewTemplate ?? draft
+  const deferredPreviewMarkup = useDeferredValue(previewRecord?.markup ?? '')
   const markupStats = useMemo(() => describeMarkup(deferredMarkup), [deferredMarkup])
 
   const isDirty = useMemo(() => {
@@ -689,13 +701,13 @@ export function App() {
   }, [companyId, currentBrandProfile])
 
   useEffect(() => {
-    if ((view !== 'editor' && view !== 'preview' && !previewModalOpen) || !draft) {
+    if ((view !== 'editor' && view !== 'preview' && !previewModalOpen) || !previewRecord) {
       return
     }
 
     let cancelled = false
 
-    inlineEmailDocument(deferredMarkup)
+    inlineEmailDocument(deferredPreviewMarkup)
       .then((nextDocument) => {
         if (!cancelled) {
           setInlinedDocument(nextDocument)
@@ -703,14 +715,29 @@ export function App() {
       })
       .catch(() => {
         if (!cancelled) {
-          setInlinedDocument(draft.markup)
+          setInlinedDocument(previewRecord.markup)
         }
       })
 
     return () => {
       cancelled = true
     }
-  }, [deferredMarkup, draft, previewModalOpen, view])
+  }, [deferredPreviewMarkup, previewModalOpen, previewRecord, view])
+
+  useLayoutEffect(() => {
+    const textarea = editorTextareaRef.current
+    const pendingSelection = pendingEditorSelectionRef.current
+
+    if (!textarea || !pendingSelection) {
+      return
+    }
+
+    pendingEditorSelectionRef.current = null
+    textarea.focus({ preventScroll: true })
+    textarea.setSelectionRange(pendingSelection.start, pendingSelection.end)
+    textarea.scrollTop = pendingSelection.scrollTop
+    textarea.scrollLeft = pendingSelection.scrollLeft
+  }, [draft?.markup])
 
   useEffect(() => {
     if (!notice) {
@@ -880,6 +907,7 @@ export function App() {
       setActiveTemplateId(null)
       setPreviewDevice('mobile')
       setPreviewModalOpen(false)
+      setPreviewTemplate(null)
     })
   }
 
@@ -890,6 +918,7 @@ export function App() {
       setActiveTemplateId(null)
       setPreviewDevice('mobile')
       setPreviewModalOpen(false)
+      setPreviewTemplate(null)
     })
   }
 
@@ -899,6 +928,7 @@ export function App() {
       setDraft(null)
       setActiveTemplateId(null)
       setPreviewModalOpen(false)
+      setPreviewTemplate(null)
     })
   }
 
@@ -908,6 +938,7 @@ export function App() {
       setDraft(null)
       setActiveTemplateId(null)
       setPreviewModalOpen(false)
+      setPreviewTemplate(null)
     })
   }
 
@@ -919,6 +950,7 @@ export function App() {
       setDraft(null)
       setActiveTemplateId(null)
       setPreviewModalOpen(false)
+      setPreviewTemplate(null)
     })
   }
 
@@ -928,6 +960,7 @@ export function App() {
       setDraft(null)
       setActiveTemplateId(null)
       setPreviewModalOpen(false)
+      setPreviewTemplate(null)
     })
   }
 
@@ -1071,6 +1104,7 @@ export function App() {
 
   const handleOpenPreview = (template: TemplateRecord) => {
     startTransition(() => {
+      setPreviewTemplate({ ...template })
       setDetailsEditMode(false)
       setDraft({ ...template })
       setActiveTemplateId(template.id)
@@ -1078,6 +1112,28 @@ export function App() {
       setPreviewDevice('mobile')
       setPreviewModalOpen(true)
     })
+  }
+
+  const handleClosePreview = () => {
+    setPreviewModalOpen(false)
+    setPreviewTemplate(null)
+  }
+
+  const handleOpenVersionPreview = (version: TemplateVersionRecord) => {
+    if (!draft) {
+      return
+    }
+
+    setPreviewTemplate({
+      ...draft,
+      category: version.category,
+      markup: version.markup,
+      name: version.name,
+      subject: version.subject,
+      updatedAt: version.createdAt,
+    })
+    setPreviewDevice('mobile')
+    setPreviewModalOpen(true)
   }
 
   const handleContinuarFromDetails = () => {
@@ -1434,18 +1490,21 @@ export function App() {
       draft.markup.slice(0, selectionStart) + token + draft.markup.slice(selectionEnd)
     const nextCursor = selectionStart + token.length
 
+    pendingEditorSelectionRef.current = {
+      end: nextCursor,
+      scrollLeft: textarea?.scrollLeft ?? 0,
+      scrollTop: textarea?.scrollTop ?? 0,
+      start: nextCursor,
+    }
     setDraft((current) => (current ? { ...current, markup: nextMarkup } : current))
     setVariableModalOpen(false)
-
-    window.requestAnimationFrame(() => {
-      textarea?.focus()
-      textarea?.setSelectionRange(nextCursor, nextCursor)
-    })
   }
 
   const currentDevice = devices[previewDevice]
   const senderAddress = `no-reply@${currentCompany.id}.com`
-  const sentAtLabel = draft ? dateFormatter.format(new Date(draft.updatedAt)) : dateFormatter.format(new Date())
+  const sentAtLabel = previewRecord
+    ? dateFormatter.format(new Date(previewRecord.updatedAt))
+    : dateFormatter.format(new Date())
   const handlePreviewDeviceChange = (deviceId: PreviewDevice) => {
     if (deviceId === 'desktop') {
       setPreviewDevice(deviceId)
@@ -2334,13 +2393,22 @@ export function App() {
                               <span>{version.subject}</span>
                               <span>{version.category}</span>
                             </div>
-                            <button
-                              className="secondary-button"
-                              onClick={() => handleRestoreVersion(version)}
-                              type="button"
-                            >
-                              Restaurar
-                            </button>
+                            <div className="version-card__actions">
+                              <button
+                                className="secondary-button"
+                                onClick={() => handleOpenVersionPreview(version)}
+                                type="button"
+                              >
+                                Preview
+                              </button>
+                              <button
+                                className="secondary-button"
+                                onClick={() => handleRestoreVersion(version)}
+                                type="button"
+                              >
+                                Restaurar
+                              </button>
+                            </div>
                           </article>
                         ))}
                       </div>
@@ -2381,7 +2449,8 @@ export function App() {
                     </div>
 
                     <MarkupEditor
-                      onChange={(value) =>
+                      onChange={(value, selection) => {
+                        pendingEditorSelectionRef.current = selection
                         setDraft((current) =>
                           current
                             ? {
@@ -2390,7 +2459,7 @@ export function App() {
                               }
                             : current,
                         )
-                      }
+                      }}
                       textareaRef={editorTextareaRef}
                       value={draft.markup}
                     />
@@ -2938,7 +3007,7 @@ export function App() {
         </div>
       )}
 
-      {previewModalOpen && draft && (
+      {previewModalOpen && previewRecord && (
         <div className="modal-backdrop" role="presentation">
           <section aria-modal="true" className="modal-card modal-card--preview" role="dialog">
             <header className="modal-card__header">
@@ -2966,7 +3035,7 @@ export function App() {
                     )
                   })}
                 </div>
-                <button aria-label="Fechar" className="icon-button" onClick={() => setPreviewModalOpen(false)} type="button">
+                <button aria-label="Fechar" className="icon-button" onClick={handleClosePreview} type="button">
                   <X size={16} />
                 </button>
               </div>
@@ -2979,7 +3048,7 @@ export function App() {
                 senderName={currentCompany.name}
                 sentAtLabel={sentAtLabel}
                 srcDoc={inlinedDocument}
-                subject={draft.subject}
+                subject={previewRecord.subject}
                 viewportHeight={currentDevice.height}
                 viewportWidth={currentDevice.width}
               />
