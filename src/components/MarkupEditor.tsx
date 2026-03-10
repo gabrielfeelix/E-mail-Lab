@@ -13,105 +13,13 @@ type MarkupEditorProps = {
   value: string
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-function highlightCssFragment(value: string) {
-  let html = escapeHtml(value)
-
-  html = html.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="editor-token editor-token--comment">$1</span>')
-  html = html.replace(/([.#]?[A-Za-z_][\w:-]*)(\s*\{)/g, '<span class="editor-token editor-token--selector">$1</span>$2')
-  html = html.replace(/([a-z-]+)(\s*:)/gi, '<span class="editor-token editor-token--property">$1</span>$2')
-  html = html.replace(
-    /(#(?:[0-9a-fA-F]{3,8})\b|(?:\d+|\d*\.\d+)(?:px|em|rem|vh|vw|%|fr)?\b|rgba?\([^)]+\)|hsla?\([^)]+\)|\b[a-z-]+\b(?=\s*[;,)]))/g,
-    '<span class="editor-token editor-token--value">$1</span>',
-  )
-
-  return html
-}
-
-function highlightAttributeChunk(value: string) {
-  return escapeHtml(value).replace(
-    /([:@A-Za-z0-9._-]+)(\s*=\s*)(&quot;.*?&quot;|&#39;.*?&#39;|[^\s"'=<>`]+)/g,
-    '<span class="editor-token editor-token--attr">$1</span>$2<span class="editor-token editor-token--string">$3</span>',
-  )
-}
-
-function highlightTag(value: string) {
-  const match = value.match(/^<(\/?)([A-Za-z][\w:-]*)([\s\S]*?)(\/?)>$/)
-
-  if (!match) {
-    return `<span class="editor-token editor-token--tag">${escapeHtml(value)}</span>`
-  }
-
-  const closeSlash = match[1] ?? ''
-  const tagName = match[2] ?? ''
-  const attributes = match[3] ?? ''
-  const selfClosingSlash = match[4] ?? ''
-  const leading = `&lt;${closeSlash}`
-  const trailing = `${selfClosingSlash}&gt;`
-
-  return [
-    `<span class="editor-token editor-token--tag">${leading}</span>`,
-    `<span class="editor-token editor-token--tag-name">${escapeHtml(tagName)}</span>`,
-    highlightAttributeChunk(attributes),
-    `<span class="editor-token editor-token--tag">${trailing}</span>`,
-  ].join('')
-}
-
-function highlightMarkup(value: string) {
-  const parts = value.split(/(\{\{[\s\S]*?\}\}|<!--[\s\S]*?-->|<\/?[^>]+>)/g)
-  let inStyle = false
-
-  return parts
-    .map((part) => {
-      if (!part) {
-        return ''
-      }
-
-      if (part.startsWith('{{') && part.endsWith('}}')) {
-        return `<span class="editor-token editor-token--variable">${escapeHtml(part)}</span>`
-      }
-
-      if (part.startsWith('<!--') && part.endsWith('-->')) {
-        return `<span class="editor-token editor-token--comment">${escapeHtml(part)}</span>`
-      }
-
-      if (part.startsWith('<') && part.endsWith('>')) {
-        const highlighted = highlightTag(part)
-        const normalized = part.toLowerCase()
-
-        if (normalized.startsWith('<style')) {
-          inStyle = true
-        }
-
-        if (normalized.startsWith('</style')) {
-          inStyle = false
-        }
-
-        return highlighted
-      }
-
-      return inStyle ? highlightCssFragment(part) : escapeHtml(part)
-    })
-    .join('')
-}
-
 export function MarkupEditor(props: MarkupEditorProps) {
   const { onChange, textareaRef, value } = props
-  const highlightInnerRef = useRef<HTMLPreElement | null>(null)
   const gutterInnerRef = useRef<HTMLDivElement | null>(null)
   const mirrorBeforeRef = useRef<HTMLSpanElement | null>(null)
   const mirrorCaretRef = useRef<HTMLSpanElement | null>(null)
   const [activeLineHeight, setActiveLineHeight] = useState(24)
   const [activeLineTop, setActiveLineTop] = useState(14)
-  const highlightedMarkup = useMemo(() => highlightMarkup(value), [value])
   const lineNumbers = useMemo(() => {
     const count = Math.max(value.split('\n').length, 1)
     return Array.from({ length: count }, (_, index) => index + 1)
@@ -126,6 +34,7 @@ export function MarkupEditor(props: MarkupEditorProps) {
 
     const sync = () => {
       const styles = window.getComputedStyle(textarea)
+      const paddingTop = Number.parseFloat(styles.paddingTop) || 14
       const lineHeight = Number.parseFloat(styles.lineHeight) || 24
       const selectionStart = textarea.selectionStart ?? 0
 
@@ -137,14 +46,10 @@ export function MarkupEditor(props: MarkupEditorProps) {
         mirrorCaretRef.current.textContent = '\u200b'
       }
 
-      const caretTop = mirrorCaretRef.current?.offsetTop ?? 14
+      const caretTop = mirrorCaretRef.current?.offsetTop ?? paddingTop
 
       setActiveLineHeight(lineHeight)
       setActiveLineTop(caretTop - textarea.scrollTop)
-
-      if (highlightInnerRef.current) {
-        highlightInnerRef.current.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`
-      }
 
       if (gutterInnerRef.current) {
         gutterInnerRef.current.style.transform = `translateY(${-textarea.scrollTop}px)`
@@ -157,7 +62,9 @@ export function MarkupEditor(props: MarkupEditorProps) {
     textarea.addEventListener('focus', sync)
     textarea.addEventListener('input', sync)
     textarea.addEventListener('keyup', sync)
+    textarea.addEventListener('mouseup', sync)
     textarea.addEventListener('select', sync)
+    textarea.addEventListener('selectionchange', sync)
 
     return () => {
       textarea.removeEventListener('scroll', sync)
@@ -165,7 +72,9 @@ export function MarkupEditor(props: MarkupEditorProps) {
       textarea.removeEventListener('focus', sync)
       textarea.removeEventListener('input', sync)
       textarea.removeEventListener('keyup', sync)
+      textarea.removeEventListener('mouseup', sync)
       textarea.removeEventListener('select', sync)
+      textarea.removeEventListener('selectionchange', sync)
     }
   }, [textareaRef, value])
 
@@ -182,20 +91,14 @@ export function MarkupEditor(props: MarkupEditorProps) {
       </div>
 
       <div className="markup-editor__code">
-        <div aria-hidden="true" className="markup-editor__highlight">
-          <div
-            className="markup-editor__current-line"
-            style={{
-              height: activeLineHeight,
-              transform: `translateY(${activeLineTop}px)`,
-            }}
-          />
-          <pre
-            className="markup-editor__highlight-inner"
-            dangerouslySetInnerHTML={{ __html: `${highlightedMarkup || ' '}\n` }}
-            ref={highlightInnerRef}
-          />
-        </div>
+        <div
+          aria-hidden="true"
+          className="markup-editor__current-line"
+          style={{
+            height: activeLineHeight,
+            transform: `translateY(${activeLineTop}px)`,
+          }}
+        />
 
         <div aria-hidden="true" className="markup-editor__measure">
           <span ref={mirrorBeforeRef} />

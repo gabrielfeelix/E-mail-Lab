@@ -884,7 +884,7 @@ button {
   border: 0;
   resize: none;
   background: transparent;
-  color: transparent;
+  color: #f4f7ff;
   caret-color: #f4f7ff;
   font-family: 'IBM Plex Mono', Consolas, monospace;
   font-size: 0.92rem;
@@ -949,21 +949,7 @@ button {
   background: rgba(255, 255, 255, 0.1);
   pointer-events: none;
   will-change: transform;
-}
-
-.markup-editor__highlight-inner {
-  min-width: 100%;
-  margin: 0;
-  padding: 14px 16px;
-  color: #f4f7ff;
-  font-family: 'IBM Plex Mono', Consolas, monospace;
-  font-size: 0.92rem;
-  line-height: 1.72;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  will-change: transform;
-  pointer-events: none;
+  z-index: 1;
 }
 
 .markup-editor__measure {
