@@ -40,14 +40,20 @@ function mapBrandProfileRow(row: BrandProfileRow): BrandProfileRecord {
   }
 }
 
-export async function loadRemoteBrandProfiles() {
+export async function loadRemoteBrandProfiles(companyId?: CompanyId) {
   const client = getSupabaseBrowserClient()
-  const result = await client
+  let query = client
     .from('company_brand_profiles')
     .select(
       'id, company_id, logo_url, primary_color, secondary_color, background_color, typography, additional_context, example_markup, reference_image_data, reference_image_name, created_at, updated_at',
     )
     .order('updated_at', { ascending: false })
+
+  if (companyId) {
+    query = query.eq('company_id', companyId)
+  }
+
+  const result = await query
 
   if (result.error) {
     throw result.error

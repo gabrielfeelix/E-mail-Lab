@@ -292,8 +292,14 @@ export function App() {
   const [initialTemplates] = useState<TemplateRecord[]>(() => loadLocalTemplates())
   const [templates, setTemplates] = useState<TemplateRecord[]>(initialTemplates)
   const [sections, setSections] = useState<SectionRecord[]>([])
+  const [loadedSectionCompanyIds, setLoadedSectionCompanyIds] = useState<CompanyId[]>([])
+  const [isLoadingSections, setIsLoadingSections] = useState(false)
   const [brandProfiles, setBrandProfiles] = useState<BrandProfileRecord[]>([])
-  const [variableGroups, setVariableGroups] = useState<TemplateVariableGroup[]>(templateVariableGroups)
+  const [loadedBrandProfileCompanyIds, setLoadedBrandProfileCompanyIds] = useState<CompanyId[]>([])
+  const [isLoadingBrandProfiles, setIsLoadingBrandProfiles] = useState(false)
+  const [variableGroups, setVariableGroups] = useState<TemplateVariableGroup[]>([])
+  const [areTemplateVariablesLoaded, setAreTemplateVariablesLoaded] = useState(false)
+  const [isLoadingTemplateVariables, setIsLoadingTemplateVariables] = useState(false)
   const [categoryMap, setCategoryMap] = useState<Map<CompanyId, string[]>>(() =>
     buildCategoryMap([], initialTemplates),
   )
@@ -360,6 +366,9 @@ export function App() {
   const [isSendingTest, setIsSendingTest] = useState(false)
   const [inlinedDocument, setInlinedDocument] = useState('')
   const markupEditorRef = useRef<MarkupEditorHandle | null>(null)
+  const sectionRequestsRef = useRef<Partial<Record<CompanyId, Promise<SectionRecord[]>>>>({})
+  const brandProfileRequestsRef = useRef<Partial<Record<CompanyId, Promise<BrandProfileRecord[]>>>>({})
+  const templateVariableRequestRef = useRef<Promise<TemplateVariableGroup[]> | null>(null)
 
   const accessibleCompanies = useMemo(() => {
     if (profile?.isAdmin) {
@@ -387,6 +396,104 @@ export function App() {
   }, [accessibleCompanies, companyId, membershipLoaded])
   const currentUserName = profile?.fullName || session?.user.user_metadata.full_name || session?.user.email || 'Conta'
   const currentUserEmail = profile?.email || session?.user.email || ''
+  const areCurrentCompanySectionsLoaded = loadedSectionCompanyIds.includes(companyId)
+  const isCurrentCompanyBrandProfileLoaded = loadedBrandProfileCompanyIds.includes(companyId)
+
+  async function ensureSectionsLoaded(targetCompanyId: CompanyId) {
+    if (loadedSectionCompanyIds.includes(targetCompanyId)) {
+      return sections.filter((section) => section.companyId === targetCompanyId)
+    }
+
+    const pending = sectionRequestsRef.current[targetCompanyId]
+    if (pending) {
+      return pending
+    }
+
+    setIsLoadingSections(true)
+
+    const request = loadRemoteSections(targetCompanyId)
+      .then((nextSections) => {
+        setSections((current) => {
+          const preserved = current.filter((section) => section.companyId !== targetCompanyId)
+          return [...nextSections, ...preserved]
+        })
+        setLoadedSectionCompanyIds((current) =>
+          current.includes(targetCompanyId) ? current : [...current, targetCompanyId]
+        )
+        return nextSections
+      })
+      .finally(() => {
+        delete sectionRequestsRef.current[targetCompanyId]
+        setIsLoadingSections(Object.keys(sectionRequestsRef.current).length > 0)
+      })
+
+    sectionRequestsRef.current[targetCompanyId] = request
+    return request
+  }
+
+  async function ensureBrandProfilesLoaded(targetCompanyId: CompanyId) {
+    if (loadedBrandProfileCompanyIds.includes(targetCompanyId)) {
+      return brandProfiles.filter((profile) => profile.companyId === targetCompanyId)
+    }
+
+    const pending = brandProfileRequestsRef.current[targetCompanyId]
+    if (pending) {
+      return pending
+    }
+
+    setIsLoadingBrandProfiles(true)
+
+    const request = loadRemoteBrandProfiles(targetCompanyId)
+      .then((nextProfiles) => {
+        setBrandProfiles((current) => {
+          const preserved = current.filter((profile) => profile.companyId !== targetCompanyId)
+          return [...nextProfiles, ...preserved]
+        })
+        setLoadedBrandProfileCompanyIds((current) =>
+          current.includes(targetCompanyId) ? current : [...current, targetCompanyId]
+        )
+        return nextProfiles
+      })
+      .finally(() => {
+        delete brandProfileRequestsRef.current[targetCompanyId]
+        setIsLoadingBrandProfiles(Object.keys(brandProfileRequestsRef.current).length > 0)
+      })
+
+    brandProfileRequestsRef.current[targetCompanyId] = request
+    return request
+  }
+
+  async function ensureTemplateVariablesLoaded() {
+    if (areTemplateVariablesLoaded) {
+      return variableGroups
+    }
+
+    if (templateVariableRequestRef.current) {
+      return templateVariableRequestRef.current
+    }
+
+    setIsLoadingTemplateVariables(true)
+
+    const request = loadRemoteTemplateVariables()
+      .then((nextVariables) => {
+        const resolved = nextVariables.length > 0 ? nextVariables : templateVariableGroups
+        setVariableGroups(resolved)
+        setAreTemplateVariablesLoaded(true)
+        return resolved
+      })
+      .catch(() => {
+        setVariableGroups(templateVariableGroups)
+        setAreTemplateVariablesLoaded(true)
+        return templateVariableGroups
+      })
+      .finally(() => {
+        templateVariableRequestRef.current = null
+        setIsLoadingTemplateVariables(false)
+      })
+
+    templateVariableRequestRef.current = request
+    return request
+  }
 
   const sortedTemplates = useMemo(
     () =>
@@ -653,6 +760,18 @@ export function App() {
 
   useEffect(() => {
     if (!session) {
+      setSections([])
+      setLoadedSectionCompanyIds([])
+      setIsLoadingSections(false)
+      sectionRequestsRef.current = {}
+      setBrandProfiles([])
+      setLoadedBrandProfileCompanyIds([])
+      setIsLoadingBrandProfiles(false)
+      brandProfileRequestsRef.current = {}
+      setVariableGroups([])
+      setAreTemplateVariablesLoaded(false)
+      setIsLoadingTemplateVariables(false)
+      templateVariableRequestRef.current = null
       setIsHydrating(false)
       return
     }
@@ -661,12 +780,7 @@ export function App() {
 
     async function hydrateWorkspace() {
       try {
-        const [remote, remoteSections, remoteBrandProfiles, remoteVariables] = await Promise.all([
-          loadRemoteWorkspace(),
-          loadRemoteSections(),
-          loadRemoteBrandProfiles(),
-          loadRemoteTemplateVariables(),
-        ])
+        const remote = await loadRemoteWorkspace()
         let nextTemplates = remote.templates
 
         if (remote.templates.length === 0 && initialTemplates.length > 0) {
@@ -682,9 +796,6 @@ export function App() {
 
         setTemplates(nextTemplates)
         setCategoryMap(buildCategoryMap(remote.categories, nextTemplates))
-        setSections(remoteSections)
-        setBrandProfiles(remoteBrandProfiles)
-        setVariableGroups(remoteVariables.length > 0 ? remoteVariables : templateVariableGroups)
       } catch {
         if (!cancelled) {
           setNotice('Supabase indisponivel. Mantendo os dados locais nesta sessao.')
@@ -936,7 +1047,7 @@ export function App() {
     })
   }
 
-  const handleOpenSections = () => {
+  const handleOpenSections = async () => {
     if (!confirmDiscardChanges()) {
       return
     }
@@ -948,9 +1059,15 @@ export function App() {
       setPreviewModalOpen(false)
       setPreviewTemplate(null)
     })
+
+    try {
+      await ensureSectionsLoaded(companyId)
+    } catch {
+      setNotice('Nao foi possivel carregar as secoes desta empresa.')
+    }
   }
 
-  const handleOpenBrand = () => {
+  const handleOpenBrand = async () => {
     if (!confirmDiscardChanges()) {
       return
     }
@@ -962,9 +1079,15 @@ export function App() {
       setPreviewModalOpen(false)
       setPreviewTemplate(null)
     })
+
+    try {
+      await ensureBrandProfilesLoaded(companyId)
+    } catch {
+      setNotice('Nao foi possivel carregar a identidade visual desta empresa.')
+    }
   }
 
-  const handleOpenVariables = () => {
+  const handleOpenVariables = async () => {
     if (!confirmDiscardChanges()) {
       return
     }
@@ -978,6 +1101,9 @@ export function App() {
       setPreviewModalOpen(false)
       setPreviewTemplate(null)
     })
+
+    const nextGroups = await ensureTemplateVariablesLoaded()
+    setActiveVariableGroupId(nextGroups[0]?.id ?? '')
   }
 
   const handleOpenAccess = () => {
@@ -1077,9 +1203,15 @@ export function App() {
     })
   }
 
-  const handleOpenCreate = () => {
+  const handleOpenCreate = async () => {
     setCreateForm(createBlankForm())
     setCreateModalOpen(true)
+
+    try {
+      await ensureSectionsLoaded(companyId)
+    } catch {
+      setNotice('Nao foi possivel carregar os favoritos desta empresa.')
+    }
   }
 
   const handleOpenSectionModal = (kind: SectionKind, section?: SectionRecord) => {
@@ -1393,18 +1525,33 @@ export function App() {
     }
   }
 
-  const handleOpenAiModal = () => {
+  const handleOpenAiModal = async () => {
     setAiError(null)
-    setAiUseFavoriteHeader(Boolean(favoriteHeader))
-    setAiUseFavoriteFooter(Boolean(favoriteFooter))
     setAiUseCurrentMarkup(Boolean(draft?.markup.trim()))
     setAiModalOpen(true)
+
+    try {
+      const [companySections] = await Promise.all([
+        ensureSectionsLoaded(companyId),
+        ensureBrandProfilesLoaded(companyId),
+        ensureTemplateVariablesLoaded(),
+      ])
+      const header = companySections.find((section) => section.kind === 'header' && section.isFavorite) ?? null
+      const footer = companySections.find((section) => section.kind === 'footer' && section.isFavorite) ?? null
+
+      setAiUseFavoriteHeader(Boolean(header))
+      setAiUseFavoriteFooter(Boolean(footer))
+    } catch {
+      setAiError('Nao foi possivel carregar todo o contexto da empresa para a IA.')
+    }
   }
 
-  const handleOpenVariableModal = () => {
+  const handleOpenVariableModal = async () => {
     setVariableSearch('')
-    setActiveVariableGroupId(variableGroups[0]?.id ?? '')
     setVariableModalOpen(true)
+
+    const nextGroups = await ensureTemplateVariablesLoaded()
+    setActiveVariableGroupId(nextGroups[0]?.id ?? '')
   }
 
   const handleGenerateWithAi = async () => {
@@ -1421,17 +1568,30 @@ export function App() {
     setAiError(null)
 
     try {
+      const [companySections, companyProfiles, nextVariableGroups] = await Promise.all([
+        ensureSectionsLoaded(companyId).catch(() => [] as SectionRecord[]),
+        ensureBrandProfilesLoaded(companyId).catch(() => [] as BrandProfileRecord[]),
+        ensureTemplateVariablesLoaded(),
+      ])
+      const header = aiUseFavoriteHeader
+        ? companySections.find((section) => section.kind === 'header' && section.isFavorite) ?? null
+        : null
+      const footer = aiUseFavoriteFooter
+        ? companySections.find((section) => section.kind === 'footer' && section.isFavorite) ?? null
+        : null
+      const companyBrandProfile = companyProfiles[0] ?? currentBrandProfile
+
       const markup = await generateEmailMarkup({
         brief: aiPrompt.trim(),
-        brandProfile: currentBrandProfile,
+        brandProfile: companyBrandProfile,
         category: draft.category,
         companyName: currentCompany.name,
         currentMarkup: aiUseCurrentMarkup ? draft.markup : '',
-        favoriteFooter: aiUseFavoriteFooter ? favoriteFooter : null,
-        favoriteHeader: aiUseFavoriteHeader ? favoriteHeader : null,
+        favoriteFooter: footer,
+        favoriteHeader: header,
         mode: aiUseCurrentMarkup ? 'variation' : 'create',
         subject: draft.subject,
-        templateVariables: variableGroups,
+        templateVariables: nextVariableGroups,
         templateName: draft.name,
       })
 
@@ -1961,7 +2121,12 @@ export function App() {
                 </button>
               </div>
 
-              {companySections.length === 0 ? (
+              {isLoadingSections && !areCurrentCompanySectionsLoaded ? (
+                <section className="empty-card">
+                  <h3>Carregando secoes</h3>
+                  <p>Buscando headers e footers da empresa atual.</p>
+                </section>
+              ) : companySections.length === 0 ? (
                 <section className="empty-card">
                   <FolderOpen size={30} />
                   <h3>Nenhuma secao cadastrada</h3>
@@ -2028,7 +2193,7 @@ export function App() {
 
                 <button
                   className="primary-button"
-                  disabled={isSavingBrandProfile}
+                  disabled={isSavingBrandProfile || (isLoadingBrandProfiles && !isCurrentCompanyBrandProfileLoaded)}
                   onClick={handleSaveBrandProfile}
                   type="button"
                 >
@@ -2037,6 +2202,12 @@ export function App() {
                 </button>
               </header>
 
+              {isLoadingBrandProfiles && !isCurrentCompanyBrandProfileLoaded ? (
+                <section className="empty-card">
+                  <h3>Carregando identidade visual</h3>
+                  <p>Buscando o contexto salvo para esta empresa.</p>
+                </section>
+              ) : (
               <section className="details-page__panel">
                 <div className="details-panel brand-panel">
                   <div className="details-panel__header">
@@ -2119,6 +2290,7 @@ export function App() {
                   </label>
                 </div>
               </section>
+              )}
             </section>
           )}
 
@@ -2142,7 +2314,12 @@ export function App() {
                 </label>
               </section>
 
-              {filteredVariableGroups.length > 0 && (
+              {isLoadingTemplateVariables && !areTemplateVariablesLoaded ? (
+                <section className="empty-card">
+                  <h3>Carregando variaveis</h3>
+                  <p>Buscando o catalogo remoto do workspace.</p>
+                </section>
+              ) : filteredVariableGroups.length > 0 && (
                 <div className="variable-tabs" role="tablist">
                   {filteredVariableGroups.map((group) => (
                     <button
@@ -2159,13 +2336,13 @@ export function App() {
                 </div>
               )}
 
-              {filteredVariableGroups.length === 0 ? (
+              {(!isLoadingTemplateVariables || areTemplateVariablesLoaded) && filteredVariableGroups.length === 0 ? (
                 <section className="empty-card">
                   <Filter size={30} />
                   <h3>Nenhuma variavel encontrada</h3>
                   <p>Ajuste a busca para encontrar o token Magento desejado.</p>
                 </section>
-              ) : (
+              ) : (!isLoadingTemplateVariables || areTemplateVariablesLoaded) ? (
                 <section className="variable-catalog">
                   {activeVariableGroup && (
                     <article className="details-panel variable-group" key={activeVariableGroup.id}>
@@ -2196,7 +2373,7 @@ export function App() {
                     </article>
                   )}
                 </section>
-              )}
+              ) : null}
             </section>
           )}
 
@@ -2644,6 +2821,7 @@ export function App() {
               <label className="field field--checkbox field--checkbox-card">
                 <input
                   checked={createForm.useFavoriteSections}
+                  disabled={isLoadingSections && !areCurrentCompanySectionsLoaded}
                   onChange={(event) =>
                     setCreateForm((current) => ({
                       ...current,
@@ -2655,7 +2833,9 @@ export function App() {
                 <span>
                   <strong>Iniciar com header e footer favoritados</strong>
                   <small>
-                    Header: {favoriteHeader?.name ?? 'nenhum'} | Footer: {favoriteFooter?.name ?? 'nenhum'}
+                    {isLoadingSections && !areCurrentCompanySectionsLoaded
+                      ? 'Carregando favoritos desta empresa...'
+                      : `Header: ${favoriteHeader?.name ?? 'nenhum'} | Footer: ${favoriteFooter?.name ?? 'nenhum'}`}
                   </small>
                 </span>
               </label>
@@ -2826,7 +3006,12 @@ export function App() {
                 />
               </label>
 
-              {filteredVariableGroups.length > 0 && (
+              {isLoadingTemplateVariables && !areTemplateVariablesLoaded ? (
+                <div className="empty-card empty-card--inline">
+                  <h3>Carregando variaveis</h3>
+                  <p>Buscando o catalogo remoto antes de inserir no template.</p>
+                </div>
+              ) : filteredVariableGroups.length > 0 && (
                 <div className="variable-tabs variable-tabs--modal" role="tablist">
                   {filteredVariableGroups.map((group) => (
                     <button
@@ -2843,13 +3028,13 @@ export function App() {
                 </div>
               )}
 
-              {filteredVariableGroups.length === 0 ? (
+              {!isLoadingTemplateVariables && filteredVariableGroups.length === 0 ? (
                 <div className="empty-card empty-card--inline">
                   <Filter size={24} />
                   <h3>Nenhuma variavel encontrada</h3>
                   <p>Ajuste a busca para localizar o token.</p>
                 </div>
-              ) : (
+              ) : !isLoadingTemplateVariables ? (
                 <div className="variable-catalog variable-catalog--modal">
                   {activeVariableGroup && (
                     <article className="variable-group variable-group--modal" key={activeVariableGroup.id}>
@@ -2875,7 +3060,7 @@ export function App() {
                     </article>
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
 
             <footer className="modal-card__actions">
@@ -2906,6 +3091,13 @@ export function App() {
                 <textarea className="section-textarea" onChange={(event) => setAiPrompt(event.target.value)} value={aiPrompt} />
               </label>
 
+              {(isLoadingSections || isLoadingBrandProfiles || isLoadingTemplateVariables) && (
+                <div className="empty-card empty-card--inline">
+                  <h3>Carregando contexto da IA</h3>
+                  <p>Buscando favoritos, identidade visual e variaveis antes de gerar o email.</p>
+                </div>
+              )}
+
               <div className="ai-options ai-options--compact">
                 <label className="ai-option">
                   <input
@@ -2927,7 +3119,7 @@ export function App() {
                 <label className="ai-option">
                   <input
                     checked={aiUseFavoriteHeader}
-                    disabled={!favoriteHeader}
+                    disabled={!favoriteHeader || isLoadingSections}
                     onChange={(event) => setAiUseFavoriteHeader(event.target.checked)}
                     type="checkbox"
                   />
@@ -2940,7 +3132,7 @@ export function App() {
                 <label className="ai-option">
                   <input
                     checked={aiUseFavoriteFooter}
-                    disabled={!favoriteFooter}
+                    disabled={!favoriteFooter || isLoadingSections}
                     onChange={(event) => setAiUseFavoriteFooter(event.target.checked)}
                     type="checkbox"
                   />
@@ -2963,7 +3155,12 @@ export function App() {
               <button className="secondary-button" onClick={() => setAiModalOpen(false)} type="button">
                 Fechar
               </button>
-              <button className="primary-button" disabled={aiGenerating} onClick={handleGenerateWithAi} type="button">
+              <button
+                className="primary-button"
+                disabled={aiGenerating || isLoadingSections || isLoadingBrandProfiles || isLoadingTemplateVariables}
+                onClick={handleGenerateWithAi}
+                type="button"
+              >
                 <Sparkles size={16} />
                 {aiGenerating ? 'Gerando...' : aiUseCurrentMarkup ? 'Gerar variacao' : 'Gerar HTML'}
               </button>

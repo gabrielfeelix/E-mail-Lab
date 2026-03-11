@@ -55,17 +55,23 @@ async function clearFavorite(kind: SectionKind, companyId: CompanyId, ignoreId?:
   }
 }
 
-export async function loadRemoteSections() {
+export async function loadRemoteSections(companyId?: CompanyId) {
   const client = getSupabaseBrowserClient()
 
   if (!client) {
     return [] as SectionRecord[]
   }
 
-  const result = await client
+  let query = client
     .from('email_sections')
     .select('id, company_id, kind, name, markup, is_favorite, created_at, updated_at')
     .order('updated_at', { ascending: false })
+
+  if (companyId) {
+    query = query.eq('company_id', companyId)
+  }
+
+  const result = await query
 
   if (result.error) {
     throw result.error
