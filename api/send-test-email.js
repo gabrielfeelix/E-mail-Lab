@@ -6,9 +6,7 @@ import {
   htmlToPlainText,
   resolveDeliverabilityConfig,
 } from './_email-deliverability.js'
-
-const DEFAULT_SUPABASE_URL = 'https://mejsihwvvpcmiktjnnpx.supabase.co'
-const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_IuSuAC__d87fbwdPtybqsw_o6YYckvx'
+import { getSupabaseServerConfig } from './_supabase-config.js'
 const DOCTYPE = '<!doctype html>'
 const BASE_STYLE_MARKER = 'data-email-lab-base'
 const SAFE_BASE_STYLE =
@@ -87,14 +85,18 @@ export default async function handler(req, res) {
     return
   }
 
-  const supabaseUrl = readEnv('VITE_SUPABASE_URL') || DEFAULT_SUPABASE_URL
-  const supabaseKey = readEnv('VITE_SUPABASE_PUBLISHABLE_KEY') || DEFAULT_SUPABASE_PUBLISHABLE_KEY
+  const { error: supabaseConfigError, supabaseKey, supabaseUrl } = getSupabaseServerConfig()
   const smtpHost = readEnv('SMTP_HOST')
   const smtpPort = Number(readEnv('SMTP_PORT') || '587')
   const smtpUser = readEnv('SMTP_USER')
   const smtpPass = readEnv('SMTP_PASS')
   const smtpFrom = readEnv('EMAIL_LAB_TEST_FROM', 'SMTP_FROM')
   const smtpSecure = readEnv('SMTP_SECURE') === 'true' || smtpPort === 465
+
+  if (supabaseConfigError) {
+    res.status(500).json({ ok: false, message: supabaseConfigError })
+    return
+  }
 
   if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
     const missing = [
