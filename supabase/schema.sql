@@ -57,6 +57,8 @@ create or replace function public.is_workspace_admin()
 returns boolean
 language sql
 stable
+security definer
+set search_path = public
 as $$
   select exists (
     select 1
@@ -888,6 +890,7 @@ using (public.is_workspace_admin())
 with check (public.is_workspace_admin());
 
 drop policy if exists "member companies read" on public.companies;
+drop policy if exists "public companies read" on public.companies;
 create policy "member companies read"
 on public.companies
 for select

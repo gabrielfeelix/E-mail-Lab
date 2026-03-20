@@ -232,14 +232,15 @@ export async function saveRemoteTemplate(template: TemplateRecord) {
   return saved
 }
 
-export async function deleteRemoteTemplate(id: string) {
+export async function deleteRemoteTemplate(id: string, companyId: CompanyId) {
   const client = getSupabaseBrowserClient()
-
-  if (!client) {
-    return
-  }
-
-  const result = await client.from('email_templates').delete().eq('id', id).select('id').maybeSingle()
+  const result = await client
+    .from('email_templates')
+    .delete()
+    .eq('id', id)
+    .eq('company_id', companyId)
+    .select('id, company_id')
+    .maybeSingle()
 
   if (result.error) {
     throw result.error
@@ -247,6 +248,11 @@ export async function deleteRemoteTemplate(id: string) {
 
   if (!result.data?.id) {
     throw new Error('O template nao foi removido do banco.')
+  }
+
+  return {
+    companyId: isCompanyId(result.data.company_id) ? result.data.company_id : companyId,
+    id: result.data.id,
   }
 }
 

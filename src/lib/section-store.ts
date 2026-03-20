@@ -116,16 +116,26 @@ export async function saveRemoteSection(section: SectionRecord) {
   return mapSectionRow(result.data as SectionRow)
 }
 
-export async function deleteRemoteSection(id: string) {
+export async function deleteRemoteSection(id: string, companyId: CompanyId) {
   const client = getSupabaseBrowserClient()
-
-  if (!client) {
-    return
-  }
-
-  const result = await client.from('email_sections').delete().eq('id', id)
+  const result = await client
+    .from('email_sections')
+    .delete()
+    .eq('id', id)
+    .eq('company_id', companyId)
+    .select('id, company_id')
+    .maybeSingle()
 
   if (result.error) {
     throw result.error
+  }
+
+  if (!result.data?.id) {
+    throw new Error('A secao nao foi removida do banco.')
+  }
+
+  return {
+    companyId: isCompanyId(result.data.company_id) ? result.data.company_id : 'pcyes',
+    id: result.data.id,
   }
 }

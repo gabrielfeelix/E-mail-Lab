@@ -1,5 +1,6 @@
 ﻿import { useDeferredValue, useEffect, useMemo, useRef, useState, startTransition } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { useEffectEvent } from 'react'
 import {
   Braces,
   ChevronDown,
@@ -308,6 +309,7 @@ export function App() {
   const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [membershipCompanyIds, setMembershipCompanyIds] = useState<CompanyId[]>([])
   const [membershipLoaded, setMembershipLoaded] = useState(false)
+  const [membershipLoadError, setMembershipLoadError] = useState<string | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [authSubmitting, setAuthSubmitting] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
@@ -724,20 +726,69 @@ export function App() {
       .catch(() => setProfile(null))
   }, [session?.user.id])
 
-  useEffect(() => {
-    if (!session?.user.id) {
+  const refreshMemberships = useEffectEvent(async (options?: { silent?: boolean }) => {
+    const userId = session?.user.id
+    const silent = options?.silent ?? false
+
+    if (!userId) {
       setMembershipCompanyIds([])
+      setMembershipLoadError(null)
       setMembershipLoaded(false)
       return
     }
 
-    loadCurrentMembershipCompanyIds()
-      .then((companyIds) =>
-        setMembershipCompanyIds(companyIds.filter((value): value is CompanyId => isCompanyId(value))),
-      )
-      .catch(() => setMembershipCompanyIds([]))
-      .finally(() => setMembershipLoaded(true))
+    if (!silent) {
+      setMembershipLoaded(false)
+    }
+
+    try {
+      const companyIds = await loadCurrentMembershipCompanyIds()
+      setMembershipCompanyIds(companyIds.filter((value): value is CompanyId => isCompanyId(value)))
+      setMembershipLoadError(null)
+    } catch (error) {
+      if (!membershipLoaded) {
+        setMembershipCompanyIds([])
+      }
+
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'Nao foi possivel validar os acessos de empresa desta conta.'
+
+      setMembershipLoadError(message)
+      setNotice('Nao foi possivel validar os acessos de empresa agora. Tentando novamente ao voltar para a aba.')
+    } finally {
+      setMembershipLoaded(true)
+    }
+  })
+
+  useEffect(() => {
+    void refreshMemberships()
   }, [session?.user.id])
+
+  useEffect(() => {
+    if (!session?.user.id || typeof document === 'undefined' || typeof window === 'undefined') {
+      return
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshMemberships({ silent: true })
+      }
+    }
+
+    const handleFocus = () => {
+      void refreshMemberships({ silent: true })
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [membershipLoaded, session?.user.id])
 
   useEffect(() => {
     if (!membershipLoaded) {
@@ -757,6 +808,14 @@ export function App() {
     window.localStorage.setItem(STORAGE_KEYS[0], JSON.stringify(templates))
     window.localStorage.setItem(SELECTED_COMPANY_KEY, companyId)
   }, [companyId, templates])
+
+  useEffect(() => {
+    if (!membershipLoadError || profile?.isAdmin || view === 'access') {
+      return
+    }
+
+    setView('templates')
+  }, [membershipLoadError, profile?.isAdmin, view])
 
   useEffect(() => {
     if (!session) {
@@ -1065,6 +1124,13 @@ export function App() {
     } catch {
       setNotice('Nao foi possivel carregar as secoes desta empresa.')
     }
+  }
+
+  const syncSectionsForCompany = (targetCompanyId: CompanyId, nextSections: SectionRecord[]) => {
+    setSections((current) => {
+      const preserved = current.filter((item) => item.companyId !== targetCompanyId)
+      return [...nextSections, ...preserved]
+    })
   }
 
   const handleOpenBrand = async () => {
@@ -1419,8 +1485,10 @@ export function App() {
     }
 
     try {
-      await deleteRemoteTemplate(deleteTarget.id)
-      setTemplates((current) => current.filter((template) => template.id !== deleteTarget.id))
+      await deleteRemoteTemplate(deleteTarget.id, deleteTarget.companyId)
+      const remote = await loadRemoteWorkspace()
+      setTemplates(remote.templates)
+      setCategoryMap(buildCategoryMap(remote.categories, remote.templates))
 
       if (activeTemplateId === deleteTarget.id) {
         setDraft(null)
@@ -1503,8 +1571,9 @@ export function App() {
     }
 
     try {
-      await deleteRemoteSection(sectionDeleteTarget.id)
-      setSections((current) => current.filter((item) => item.id !== sectionDeleteTarget.id))
+      await deleteRemoteSection(sectionDeleteTarget.id, sectionDeleteTarget.companyId)
+      const nextSections = await loadRemoteSections(sectionDeleteTarget.companyId)
+      syncSectionsForCompany(sectionDeleteTarget.companyId, nextSections)
       setSectionDeleteTarget(null)
       setNotice('Secao excluida.')
     } catch {
